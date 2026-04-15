@@ -39,7 +39,7 @@ local ui = {
         value = nil,
         event_name = "--",
     },
-    rec_states = {},
+    target_states = {},
 }
 
 local redraw_timer
@@ -120,16 +120,67 @@ local function target_value_text(param_id)
     return tostring(params:get(param_id))
 end
 
-local function refresh_target_rec_state(device_id, channel, event_id, rec_state)
+local function target_display_value_text(param_id)
+    local state = ui.target_states[param_id]
+    if state ~= nil and state.value ~= nil then
+        return tostring(state.value)
+    end
+
+    return target_value_text(param_id)
+end
+
+local function target_mapping(param_id)
+    if norns.pmap == nil or norns.pmap.data == nil then
+        return nil
+    end
+
+    return norns.pmap.data[param_id]
+end
+
+local function clear_target_states()
+    ui.target_states = {}
+end
+
+local function refresh_target_loop_state(device_id, channel, event_id, rec_state, play_state, value, event_name)
     if norns.pmap == nil or norns.pmap.data == nil then
         return
     end
 
     for param_id, pmap in pairs(norns.pmap.data) do
         if pmap.dev == device_id and pmap.ch == channel and pmap.cc == event_id then
-            ui.rec_states[param_id] = rec_state
+            local previous_state = ui.target_states[param_id] or {}
+            local next_value = previous_state.value
+
+            if value ~= nil and (event_name == "cc" or event_name == "play") then
+                next_value = value
+            end
+
+            ui.target_states[param_id] = {
+                rec_state = rec_state,
+                play_state = play_state,
+                value = next_value,
+            }
         end
     end
+end
+
+local function target_status_text(param_id)
+    local state = ui.target_states[param_id]
+    if state ~= nil and state.rec_state == 1 then
+        return "rec"
+    end
+    if state ~= nil and state.play_state == 1 then
+        return "ply"
+    end
+    return "---"
+end
+
+local function target_channel_cc_text(param_id)
+    local pmap = target_mapping(param_id)
+    if pmap == nil or pmap.ch == nil or pmap.cc == nil then
+        return "--/--"
+    end
+    return string.format("%d/%d", pmap.ch, pmap.cc)
 end
 
 local function midi_status_text()
@@ -220,19 +271,32 @@ local function draw_targets_page()
     local selection = ui.selection[PAGE_TARGETS]
     local start_index = util.clamp(selection - 1, 1, math.max(#TARGET_IDS - 3, 1))
     local stop_index = math.min(start_index + 3, #TARGET_IDS)
-    local y = 21
+    local y = 26
+
+    screen.level(10)
+    screen.move(2, 17)
+    screen.text("tg")
+    screen.move(24, 17)
+    screen.text("st")
+    screen.move(48, 17)
+    screen.text("ch/cc")
+    screen.move(126, 17)
+    screen.text_right("val")
 
     for index = start_index, stop_index do
         local param_id = TARGET_IDS[index]
         local active = index == selection
-        local rec = ui.rec_states[param_id] == 1 and "rec" or "   "
 
         screen.level(active and 15 or 4)
         screen.move(2, y)
-        screen.text(string.format("%d %s", index, rec))
+        screen.text(string.format("%s%d", active and ">" or " ", index))
+        screen.move(24, y)
+        screen.text(target_status_text(param_id))
+        screen.move(48, y)
+        screen.text(target_channel_cc_text(param_id))
         screen.move(126, y)
-        screen.text_right(target_value_text(param_id))
-        y = y + 11
+        screen.text_right(target_display_value_text(param_id))
+        y = y + 9
     end
 
     screen.level(10)
@@ -307,6 +371,7 @@ local function build_params()
     params:add_option("midisista_midi_device", "midi device", device_options(), ui.selected_device)
     params:set_action("midisista_midi_device", function(value)
         ui.selected_device = value
+        clear_target_states()
         midididi.set_device(value)
         save_state()
         mark_dirty()
@@ -365,7 +430,11 @@ function init()
     params:set("midisista_midi_device", ui.selected_device)
 
     midididi.on_rec_change(function(device_id, channel, event_id, rec_state)
-        refresh_target_rec_state(device_id, channel, event_id, rec_state)
+        refresh_target_loop_state(device_id, channel, event_id, rec_state, 0, nil, nil)
+        mark_dirty()
+    end)
+    midididi.on_loop_state_change(function(device_id, channel, event_id, rec_state, play_state, value, event_name)
+        refresh_target_loop_state(device_id, channel, event_id, rec_state, play_state, value, event_name)
         mark_dirty()
     end)
     midididi.on_midi_info_change(function(device_id, channel, event_id, rec_state, value, event_name)
