@@ -19,6 +19,7 @@ local MIDI_EVENT_CODES = {
 
 local on_rec_change
 local on_midi_info_change
+local on_loop_state_change
 local selected_port
 local enabled_device_id
 local initialized = false
@@ -52,6 +53,13 @@ local function normalize_rec_state(rec_state)
     return 1
 end
 
+local function normalize_play_state(play_state)
+    if play_state == nil or play_state == false or play_state == 0 then
+        return 0
+    end
+    return 1
+end
+
 local function notify_midi_info(device_id, channel, event_id, rec_state, value, event)
     local normalized_rec_state = normalize_rec_state(rec_state)
 
@@ -61,6 +69,20 @@ local function notify_midi_info(device_id, channel, event_id, rec_state, value, 
 
     if on_midi_info_change ~= nil then
         on_midi_info_change(device_id, channel, event_id, normalized_rec_state, value, event)
+    end
+end
+
+local function notify_loop_state(device_id, channel, event_id, rec_state, play_state, value, event)
+    if on_loop_state_change ~= nil then
+        on_loop_state_change(
+            device_id,
+            channel,
+            event_id,
+            normalize_rec_state(rec_state),
+            normalize_play_state(play_state),
+            value,
+            event
+        )
     end
 end
 
@@ -88,6 +110,22 @@ local function send_midi_output(midi_msg)
     end
 end
 
+local function emit_pattern_state(pattern, value, event)
+    if pattern == nil or pattern.loop == nil then
+        return
+    end
+
+    notify_loop_state(
+        pattern.device_id,
+        pattern.channel,
+        pattern.event_id,
+        pattern.loop.rec,
+        pattern.loop.play,
+        value,
+        event
+    )
+end
+
 local function create_pattern(device_id, channel, event_id)
     local pattern = {}
     pattern.device_id = device_id
@@ -98,6 +136,16 @@ local function create_pattern(device_id, channel, event_id)
     pattern.loop:set_loop(1)
     pattern.loop.process = function(event)
         send_midi_output(event.midi_msg)
+        emit_pattern_state(pattern, event.value, "cc")
+    end
+    pattern.loop.start_callback = function()
+        emit_pattern_state(pattern, pattern.last_value, "play")
+    end
+    pattern.loop.end_of_rec_callback = function()
+        emit_pattern_state(pattern, pattern.last_value, "rec_end")
+    end
+    pattern.loop.end_callback = function()
+        emit_pattern_state(pattern, pattern.last_value, "stop")
     end
     table.insert(patterns, pattern)
     return pattern
@@ -150,8 +198,10 @@ local function on_midi_event(device_id, midi_msg)
             pattern.loop:set_rec(1)
         end
         notify_midi_info(device_id, channel, event_id, get_device_rec_state(device_id), value, event)
+        emit_pattern_state(pattern, value, event)
     elseif pattern ~= nil and event == "note_off" then
         notify_midi_info(device_id, channel, event_id, get_device_rec_state(device_id), value, event)
+        emit_pattern_state(pattern, value, event)
     elseif pattern ~= nil and event == "cc" then
         local tolerance_distance = math.abs(pattern.last_value - value) > TOLERANCE_DISTANCE
         if pattern.loop.rec == 0 and tolerance_distance and pattern.tolerance_time_passed then
@@ -166,8 +216,10 @@ local function on_midi_event(device_id, midi_msg)
             midi_msg = copy_midi_msg(midi_msg),
         })
         notify_midi_info(device_id, channel, event_id, get_device_rec_state(device_id), value, event)
+        emit_pattern_state(pattern, value, event)
     else
         notify_midi_info(device_id, channel, event_id, get_device_rec_state(device_id), value, event or string.format("0x%X", event_code))
+        emit_pattern_state(pattern, value, event or string.format("0x%X", event_code))
     end
 
     norns_midi_event(device_id, midi_msg)
@@ -196,6 +248,7 @@ function Midididi.cleanup()
     input_midi_device = nil
     input_midi_passthrough_event = nil
     output_midi_device = nil
+    on_loop_state_change = nil
     patterns = {}
     initialized = false
 end
@@ -206,6 +259,10 @@ end
 
 function Midididi.on_midi_info_change(callback)
     on_midi_info_change = callback
+end
+
+function Midididi.on_loop_state_change(callback)
+    on_loop_state_change = callback
 end
 
 function Midididi.set_device(device_id)
