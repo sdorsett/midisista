@@ -417,6 +417,7 @@ function Midididi.set_device(device_id)
         input_midi_device.event = input_midi_passthrough_event
     end
 
+    output_midi_device = device_id ~= nil and midi.connect(device_id) or nil
     input_midi_device = device_id ~= nil and midi.connect(device_id) or nil
     input_midi_passthrough_event = nil
     enabled_device_id = resolve_device_id(input_midi_device, device_id)
@@ -434,8 +435,6 @@ function Midididi.set_device(device_id)
             end
         end
     end
-
-    output_midi_device = input_midi_device
 end
 
 return Midididi
