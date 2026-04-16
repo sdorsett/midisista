@@ -95,6 +95,9 @@ local function update_midi_info(device_id, midi_msg, rec_state)
     local channel = (midi_msg[1] & 0x0F) + 1
     local event_id = midi_msg[2]
     local value = midi_msg[3]
+    if event_code == 0x90 and value == 0 then
+        event_code = 0x80
+    end
     local event = MIDI_EVENT_CODES[event_code] or string.format("0x%X", event_code)
 
     notify_midi_info(device_id, channel, event_id, rec_state or 0, value, event)
@@ -180,8 +183,11 @@ local function on_midi_event(device_id, midi_msg)
     local event_code = midi_msg[1] & 0xF0
     local channel = (midi_msg[1] & 0x0F) + 1
     local event_id = midi_msg[2]
-    local event = MIDI_EVENT_CODES[event_code]
     local value = midi_msg[3]
+    if event_code == 0x90 and value == 0 then
+        event_code = 0x80
+    end
+    local event = MIDI_EVENT_CODES[event_code]
 
     local pattern = get_pattern(device_id, channel, event_id)
     if pattern == nil then

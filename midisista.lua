@@ -146,6 +146,39 @@ local function target_mapping(param_id)
     return norns.pmap.data[param_id]
 end
 
+local function target_mapping_matches_event(pmap, device_id, channel, event_id)
+    if pmap == nil then
+        return false
+    end
+
+    if pmap.ch ~= channel or pmap.cc ~= event_id then
+        return false
+    end
+
+    if pmap.dev == nil then
+        return false
+    end
+
+    if pmap.dev == device_id or pmap.dev == ui.selected_device then
+        return true
+    end
+
+    local vport = midi.vports[ui.selected_device]
+    if vport == nil then
+        return false
+    end
+
+    if vport.id ~= nil and pmap.dev == vport.id then
+        return true
+    end
+
+    if vport.device ~= nil and vport.device.id ~= nil and pmap.dev == vport.device.id then
+        return true
+    end
+
+    return false
+end
+
 local function clear_target_states()
     ui.target_states = {}
 end
@@ -156,7 +189,7 @@ local function refresh_target_loop_state(device_id, channel, event_id, rec_state
     end
 
     for param_id, pmap in pairs(norns.pmap.data) do
-        if pmap.dev == device_id and pmap.ch == channel and pmap.cc == event_id then
+        if target_mapping_matches_event(pmap, device_id, channel, event_id) then
             local previous_state = ui.target_states[param_id] or {}
             local next_value = previous_state.value
 
