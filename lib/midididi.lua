@@ -113,6 +113,22 @@ local function send_midi_output(midi_msg)
     end
 end
 
+local function pattern_play_state(pattern)
+    if pattern == nil then
+        return 0
+    end
+
+    if pattern.play_state ~= nil then
+        return pattern.play_state
+    end
+
+    if pattern.loop ~= nil then
+        return pattern.loop.play
+    end
+
+    return 0
+end
+
 local function emit_pattern_state(pattern, value, event)
     if pattern == nil or pattern.loop == nil then
         return
@@ -123,10 +139,28 @@ local function emit_pattern_state(pattern, value, event)
         pattern.channel,
         pattern.event_id,
         pattern.loop.rec,
-        pattern.loop.play,
+        pattern_play_state(pattern),
         value,
         event
     )
+end
+
+local function stop_pattern_playback(pattern, emit_stop)
+    if pattern == nil then
+        return
+    end
+
+    if pattern.play_clock ~= nil then
+        clock.cancel(pattern.play_clock)
+        pattern.play_clock = nil
+    end
+
+    local was_playing = pattern.play_state == 1
+    pattern.play_state = 0
+
+    if emit_stop ~= false and was_playing then
+        emit_pattern_state(pattern, pattern.last_value, "stop")
+    end
 end
 
 local function start_pattern_playback(pattern)
@@ -134,16 +168,50 @@ local function start_pattern_playback(pattern)
         return
     end
 
-    if pattern.loop.count == nil or pattern.loop.count == 0 then
+    if pattern.recorded_events == nil or #pattern.recorded_events == 0 then
         return
     end
 
-    if normalize_play_state(pattern.loop.play) == 1 then
+    if pattern.play_state == 1 then
         return
     end
 
-    pattern.loop:start()
+    stop_pattern_playback(pattern, false)
+    pattern.play_state = 1
     emit_pattern_state(pattern, pattern.last_value, "play")
+    pattern.play_clock = clock.run(function()
+        while pattern.play_state == 1 do
+            local previous_time = 0
+
+            for _, event in ipairs(pattern.recorded_events) do
+                local delta = math.max(0, event.time - previous_time)
+                if delta > 0 then
+                    clock.sleep(delta)
+                end
+
+                if pattern.play_state ~= 1 then
+                    return
+                end
+
+                send_midi_output(event.midi_msg)
+                emit_pattern_state(pattern, event.value, "cc")
+                previous_time = event.time
+            end
+
+            if pattern.loop.loop ~= 1 then
+                break
+            end
+
+            local remainder = math.max(0, pattern.loop_length - previous_time)
+            if remainder > 0 then
+                clock.sleep(remainder)
+            end
+        end
+
+        pattern.play_clock = nil
+        pattern.play_state = 0
+        emit_pattern_state(pattern, pattern.last_value, "stop")
+    end)
 end
 
 local function create_pattern(device_id, channel, event_id)
@@ -152,6 +220,11 @@ local function create_pattern(device_id, channel, event_id)
     pattern.channel = channel
     pattern.event_id = event_id
     pattern.last_value = 0
+    pattern.loop_length = 0
+    pattern.play_state = 0
+    pattern.play_clock = nil
+    pattern.record_started_at = nil
+    pattern.recorded_events = {}
     pattern.loop = reflection:new()
     pattern.loop:set_loop(1)
     pattern.loop.process = function(event)
@@ -159,13 +232,14 @@ local function create_pattern(device_id, channel, event_id)
         emit_pattern_state(pattern, event.value, "cc")
     end
     pattern.loop.start_callback = function()
+        pattern.play_state = 1
         emit_pattern_state(pattern, pattern.last_value, "play")
     end
     pattern.loop.end_of_rec_callback = function()
-        start_pattern_playback(pattern)
         emit_pattern_state(pattern, pattern.last_value, "rec_end")
     end
     pattern.loop.end_callback = function()
+        pattern.play_state = 0
         emit_pattern_state(pattern, pattern.last_value, "stop")
     end
     table.insert(patterns, pattern)
@@ -212,20 +286,23 @@ local function on_midi_event(device_id, midi_msg)
     if event == "note_on" then
         if normalize_rec_state(pattern.loop.rec) == 1 then
             pattern.loop:set_rec(0)
-            clock.run(function()
-                clock.sleep(1 / 48)
-                start_pattern_playback(pattern)
-            end)
+            pattern.loop_length = math.max(
+                util.time() - (pattern.record_started_at or util.time()),
+                (#pattern.recorded_events > 0 and pattern.recorded_events[#pattern.recorded_events].time or 0)
+            )
+            start_pattern_playback(pattern)
             pattern.tolerance_time_passed = false
             clock.run(function()
                 clock.sleep(TOLERANCE_TIME_MS / 1000)
                 pattern.tolerance_time_passed = true
             end)
         else
-            if normalize_play_state(pattern.loop.play) == 1 then
-                pattern.loop:stop()
-            end
+            stop_pattern_playback(pattern, false)
+            pattern.loop:stop()
             pattern.loop:clear()
+            pattern.record_started_at = util.time()
+            pattern.recorded_events = {}
+            pattern.loop_length = 0
             pattern.loop:set_rec(1)
         end
         notify_midi_info(device_id, channel, event_id, get_device_rec_state(device_id), value, event)
@@ -236,9 +313,19 @@ local function on_midi_event(device_id, midi_msg)
     elseif pattern ~= nil and event == "cc" then
         local tolerance_distance = math.abs(pattern.last_value - value) > TOLERANCE_DISTANCE
         if pattern.loop.rec == 0 and tolerance_distance and pattern.tolerance_time_passed then
+            stop_pattern_playback(pattern, false)
             pattern.loop:clear()
+            pattern.recorded_events = {}
+            pattern.loop_length = 0
         end
         pattern.last_value = value
+        if pattern.loop.rec == 1 and pattern.record_started_at ~= nil then
+            table.insert(pattern.recorded_events, {
+                time = math.max(0, util.time() - pattern.record_started_at),
+                value = value,
+                midi_msg = copy_midi_msg(midi_msg),
+            })
+        end
         pattern.loop:watch({
             device_id = device_id,
             channel = channel,
@@ -276,6 +363,9 @@ function Midididi.cleanup()
     end
 
     norns_midi_event = nil
+    for _, pattern in pairs(patterns) do
+        stop_pattern_playback(pattern, false)
+    end
     input_midi_device = nil
     input_midi_passthrough_event = nil
     output_midi_device = nil
