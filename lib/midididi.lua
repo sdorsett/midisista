@@ -153,19 +153,47 @@ local function pattern_play_state(pattern)
     return 0
 end
 
-local function emit_pattern_state(pattern, value, event)
+local function midi_event_details(midi_msg)
+    if midi_msg == nil or midi_msg[1] == nil then
+        return nil, nil, nil
+    end
+
+    local event_code = midi_msg[1] & 0xF0
+    local channel = (midi_msg[1] & 0x0F) + 1
+    local event_id = midi_msg[2]
+    local value = midi_msg[3]
+
+    if event_code == 0x90 and value == 0 then
+        event_code = 0x80
+    end
+
+    return channel, event_id, MIDI_EVENT_CODES[event_code] or string.format("0x%X", event_code)
+end
+
+local function emit_pattern_state(pattern, value, event, midi_msg)
     if pattern == nil or pattern.loop == nil then
         return
     end
 
+    local channel = pattern.channel
+    local event_id = pattern.event_id
+    local emitted_event = event
+
+    if midi_msg ~= nil then
+        local midi_channel, midi_event_id, midi_event = midi_event_details(midi_msg)
+        channel = midi_channel or channel
+        event_id = midi_event_id or event_id
+        emitted_event = midi_event or emitted_event
+    end
+
     notify_loop_state(
         pattern.device_id,
-        pattern.channel,
-        pattern.event_id,
+        channel,
+        event_id,
         pattern.loop.rec,
         pattern_play_state(pattern),
         value,
-        event
+        emitted_event
     )
 end
 
@@ -218,7 +246,7 @@ local function start_pattern_playback(pattern)
                 end
 
                 send_midi_output(event.midi_msg)
-                emit_pattern_state(pattern, event.value, "cc")
+                emit_pattern_state(pattern, event.value, "cc", event.midi_msg)
                 previous_time = event.time
             end
 
@@ -253,7 +281,7 @@ local function create_pattern(device_id, channel, event_id)
     pattern.loop:set_loop(1)
     pattern.loop.process = function(event)
         send_midi_output(event.midi_msg)
-        emit_pattern_state(pattern, event.value, "cc")
+        emit_pattern_state(pattern, event.value, "cc", event.midi_msg)
     end
     pattern.loop.start_callback = function()
         pattern.play_state = 1
