@@ -33,6 +33,7 @@ local ui = {
     persist_device = 1,
     midi_info = {
         rec_state = 0,
+        play_state = 0,
         device_id = nil,
         channel = nil,
         event_id = nil,
@@ -226,7 +227,13 @@ local function target_channel_cc_text(param_id)
 end
 
 local function midi_status_text()
-    return ui.midi_info.rec_state == 1 and "recording" or "idle"
+    if ui.midi_info.rec_state == 1 then
+        return "recording"
+    end
+    if ui.midi_info.play_state == 1 then
+        return "playing"
+    end
+    return "idle"
 end
 
 local function page_title()
@@ -477,6 +484,12 @@ function init()
     end)
     midididi.on_loop_state_change(function(device_id, channel, event_id, rec_state, play_state, value, event_name)
         refresh_target_loop_state(device_id, channel, event_id, rec_state, play_state, value, event_name)
+        if ui.midi_info.device_id == device_id and ui.midi_info.channel == channel and ui.midi_info.event_id == event_id then
+            ui.midi_info.play_state = play_state or 0
+            if value ~= nil and (event_name == "cc" or event_name == "play") then
+                ui.midi_info.value = value
+            end
+        end
         mark_dirty()
     end)
     midididi.on_midi_info_change(function(device_id, channel, event_id, rec_state, value, event_name)
@@ -484,6 +497,9 @@ function init()
         ui.midi_info.channel = channel
         ui.midi_info.event_id = event_id
         ui.midi_info.rec_state = rec_state or 0
+        if rec_state == 1 then
+            ui.midi_info.play_state = 0
+        end
         ui.midi_info.value = value
         ui.midi_info.event_name = event_name or "--"
         mark_dirty()

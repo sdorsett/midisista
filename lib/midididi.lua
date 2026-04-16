@@ -129,6 +129,23 @@ local function emit_pattern_state(pattern, value, event)
     )
 end
 
+local function start_pattern_playback(pattern)
+    if pattern == nil or pattern.loop == nil then
+        return
+    end
+
+    if pattern.loop.count == nil or pattern.loop.count == 0 then
+        return
+    end
+
+    if normalize_play_state(pattern.loop.play) == 1 then
+        return
+    end
+
+    pattern.loop:start()
+    emit_pattern_state(pattern, pattern.last_value, "play")
+end
+
 local function create_pattern(device_id, channel, event_id)
     local pattern = {}
     pattern.device_id = device_id
@@ -145,9 +162,7 @@ local function create_pattern(device_id, channel, event_id)
         emit_pattern_state(pattern, pattern.last_value, "play")
     end
     pattern.loop.end_of_rec_callback = function()
-        if pattern.loop.count ~= nil and pattern.loop.count > 0 and normalize_play_state(pattern.loop.play) == 0 then
-            pattern.loop:start()
-        end
+        start_pattern_playback(pattern)
         emit_pattern_state(pattern, pattern.last_value, "rec_end")
     end
     pattern.loop.end_callback = function()
@@ -197,6 +212,10 @@ local function on_midi_event(device_id, midi_msg)
     if event == "note_on" then
         if normalize_rec_state(pattern.loop.rec) == 1 then
             pattern.loop:set_rec(0)
+            clock.run(function()
+                clock.sleep(1 / 48)
+                start_pattern_playback(pattern)
+            end)
             pattern.tolerance_time_passed = false
             clock.run(function()
                 clock.sleep(TOLERANCE_TIME_MS / 1000)
