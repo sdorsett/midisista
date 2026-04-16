@@ -147,6 +147,28 @@ local function target_mapping(param_id)
     return norns.pmap.data[param_id]
 end
 
+local function target_has_assigned_mapping(param_id, pmap)
+    if norns.pmap == nil or norns.pmap.rev == nil then
+        return false
+    end
+
+    if pmap == nil or pmap.dev == nil or pmap.ch == nil or pmap.cc == nil then
+        return false
+    end
+
+    return norns.pmap.rev[pmap.dev] ~= nil
+        and norns.pmap.rev[pmap.dev][pmap.ch] ~= nil
+        and norns.pmap.rev[pmap.dev][pmap.ch][pmap.cc] == param_id
+end
+
+local function target_assigned_mapping(param_id)
+    local pmap = target_mapping(param_id)
+    if target_has_assigned_mapping(param_id, pmap) then
+        return pmap
+    end
+    return nil
+end
+
 local function target_mapping_matches_event(pmap, device_id, channel, event_id)
     if pmap == nil then
         return false
@@ -219,11 +241,23 @@ local function target_status_text(param_id)
 end
 
 local function target_channel_cc_text(param_id)
-    local pmap = target_mapping(param_id)
+    local pmap = target_assigned_mapping(param_id)
     if pmap == nil or pmap.ch == nil or pmap.cc == nil then
         return "--/--"
     end
     return string.format("%d/%d", pmap.ch, pmap.cc)
+end
+
+local function ensure_target_pmaps()
+    if norns.pmap == nil or norns.pmap.data == nil or norns.pmap.new == nil then
+        return
+    end
+
+    for _, param_id in ipairs(TARGET_IDS) do
+        if norns.pmap.data[param_id] == nil then
+            norns.pmap.new(param_id)
+        end
+    end
 end
 
 local function midi_status_text()
@@ -474,6 +508,7 @@ function init()
     clamp_page_selection()
     midididi.init()
     build_params()
+    ensure_target_pmaps()
 
     params:set("midisista_persist_device", ui.persist_device)
     params:set("midisista_midi_device", ui.selected_device)
