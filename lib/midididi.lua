@@ -109,6 +109,30 @@ local function send_midi_output(midi_msg)
     end
 
     if output_midi_device ~= nil and midi_msg ~= nil then
+        local status = midi_msg[1]
+        local data1 = midi_msg[2]
+        local data2 = midi_msg[3]
+
+        if status ~= nil then
+            local event_code = status & 0xF0
+            local channel = (status & 0x0F) + 1
+
+            if event_code == 0xB0 and data1 ~= nil and data2 ~= nil then
+                output_midi_device:cc(data1, data2, channel)
+                return
+            elseif event_code == 0x90 and data1 ~= nil and data2 ~= nil then
+                if data2 == 0 then
+                    output_midi_device:note_off(data1, 0, channel)
+                else
+                    output_midi_device:note_on(data1, data2, channel)
+                end
+                return
+            elseif event_code == 0x80 and data1 ~= nil and data2 ~= nil then
+                output_midi_device:note_off(data1, data2, channel)
+                return
+            end
+        end
+
         output_midi_device:send(midi_msg)
     end
 end
