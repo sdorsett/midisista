@@ -142,6 +142,9 @@ local function create_pattern(device_id, channel, event_id)
         emit_pattern_state(pattern, pattern.last_value, "play")
     end
     pattern.loop.end_of_rec_callback = function()
+        if pattern.loop.count ~= nil and pattern.loop.count > 0 and normalize_play_state(pattern.loop.play) == 0 then
+            pattern.loop:start()
+        end
         emit_pattern_state(pattern, pattern.last_value, "rec_end")
     end
     pattern.loop.end_callback = function()
@@ -194,6 +197,9 @@ local function on_midi_event(device_id, midi_msg)
                 pattern.tolerance_time_passed = true
             end)
         else
+            if normalize_play_state(pattern.loop.play) == 1 then
+                pattern.loop:stop()
+            end
             pattern.loop:clear()
             pattern.loop:set_rec(1)
         end
