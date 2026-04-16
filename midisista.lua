@@ -60,6 +60,15 @@ local function mark_dirty()
     ui.dirty = true
 end
 
+local function encoder_delta(value)
+    if value == nil or value == 0 then
+        return 0
+    elseif value > 0 then
+        return 1
+    end
+    return -1
+end
+
 local function show_message(text)
     ui.message = text
     ui.message_until = util.time() + 1.2
@@ -460,23 +469,23 @@ end
 
 function enc(n, d)
     if n == 1 then
-        ui.page = util.clamp(ui.page + util.sign(d), 1, ui.page_count)
+        ui.page = util.clamp(ui.page + encoder_delta(d), 1, ui.page_count)
         show_message(string.lower(page_title()))
         return
     end
 
     if n == 2 then
         if ui.page == PAGE_DEVICE then
-            ui.selection[PAGE_DEVICE] = util.clamp(ui.selection[PAGE_DEVICE] + util.sign(d), 1, 2)
+            ui.selection[PAGE_DEVICE] = util.clamp(ui.selection[PAGE_DEVICE] + encoder_delta(d), 1, 2)
         elseif ui.page == PAGE_TARGETS then
-            ui.selection[PAGE_TARGETS] = util.clamp(ui.selection[PAGE_TARGETS] + util.sign(d), 1, #TARGET_IDS)
+            ui.selection[PAGE_TARGETS] = util.clamp(ui.selection[PAGE_TARGETS] + encoder_delta(d), 1, #TARGET_IDS)
         end
         mark_dirty()
         return
     end
 
     if n == 3 then
-        local delta = util.sign(d)
+        local delta = encoder_delta(d)
         if ui.page == PAGE_DEVICE then
             adjust_device_page(delta)
         elseif ui.page == PAGE_TARGETS then
