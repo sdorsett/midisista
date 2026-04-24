@@ -147,18 +147,77 @@ local function target_mapping(param_id)
     return norns.pmap.data[param_id]
 end
 
-local function target_has_assigned_mapping(param_id, pmap)
-    if norns.pmap == nil or norns.pmap.rev == nil then
+local function values_match(left, right)
+    if left == nil or right == nil then
         return false
     end
 
+    if left == right then
+        return true
+    end
+
+    local left_num = tonumber(left)
+    local right_num = tonumber(right)
+    if left_num ~= nil and right_num ~= nil and left_num == right_num then
+        return true
+    end
+
+    return tostring(left) == tostring(right)
+end
+
+local function target_mapping_device_matches(pmap_dev, device_id)
+    if pmap_dev == nil then
+        return false
+    end
+
+    local candidates = {
+        device_id,
+        ui.selected_device,
+    }
+
+    local selected_vport = midi.vports[ui.selected_device]
+    if selected_vport ~= nil then
+        table.insert(candidates, selected_vport.id)
+        if selected_vport.device ~= nil then
+            table.insert(candidates, selected_vport.device.id)
+        end
+    end
+
+    if type(device_id) == "number" then
+        local event_vport = midi.vports[device_id]
+        if event_vport ~= nil then
+            table.insert(candidates, event_vport.id)
+            if event_vport.device ~= nil then
+                table.insert(candidates, event_vport.device.id)
+            end
+        end
+    end
+
+    for _, candidate in ipairs(candidates) do
+        if values_match(pmap_dev, candidate) then
+            return true
+        end
+    end
+
+    return false
+end
+
+local function target_has_assigned_mapping(param_id, pmap)
     if pmap == nil or pmap.dev == nil or pmap.ch == nil or pmap.cc == nil then
         return false
     end
 
-    return norns.pmap.rev[pmap.dev] ~= nil
+    if norns.pmap == nil or norns.pmap.rev == nil then
+        return true
+    end
+
+    if norns.pmap.rev[pmap.dev] ~= nil
         and norns.pmap.rev[pmap.dev][pmap.ch] ~= nil
-        and norns.pmap.rev[pmap.dev][pmap.ch][pmap.cc] == param_id
+        and norns.pmap.rev[pmap.dev][pmap.ch][pmap.cc] == param_id then
+        return true
+    end
+
+    return target_mapping_device_matches(pmap.dev, ui.midi_info.device_id)
 end
 
 local function target_assigned_mapping(param_id)
@@ -174,32 +233,11 @@ local function target_mapping_matches_event(pmap, device_id, channel, event_id)
         return false
     end
 
-    if pmap.ch ~= channel or pmap.cc ~= event_id then
+    if not values_match(pmap.ch, channel) or not values_match(pmap.cc, event_id) then
         return false
     end
 
-    if pmap.dev == nil then
-        return false
-    end
-
-    if pmap.dev == device_id or pmap.dev == ui.selected_device then
-        return true
-    end
-
-    local vport = midi.vports[ui.selected_device]
-    if vport == nil then
-        return false
-    end
-
-    if vport.id ~= nil and pmap.dev == vport.id then
-        return true
-    end
-
-    if vport.device ~= nil and vport.device.id ~= nil and pmap.dev == vport.device.id then
-        return true
-    end
-
-    return false
+    return target_mapping_device_matches(pmap.dev, device_id)
 end
 
 local function clear_target_states()
