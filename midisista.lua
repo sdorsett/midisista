@@ -3,24 +3,14 @@ local midididi = include("midisista/lib/midididi")
 local DATA_DIR = _path.data .. "midisista/"
 local STATE_FILE = DATA_DIR .. "state.data"
 
-local TARGET_IDS = {
-    "midisista_target_1",
-    "midisista_target_2",
-    "midisista_target_3",
-    "midisista_target_4",
-    "midisista_target_5",
-    "midisista_target_6",
-    "midisista_target_7",
-    "midisista_target_8",
-    "midisista_target_9",
-    "midisista_target_10",
-    "midisista_target_11",
-    "midisista_target_12",
-    "midisista_target_13",
-    "midisista_target_14",
-    "midisista_target_15",
-    "midisista_target_16",
-}
+local TARGET_IDS = {}
+for i = 1, 32 do
+    TARGET_IDS[i] = "midisista_target_" .. i
+end
+
+local TARGETS_PAGE_COUNT = 4
+local TARGETS_VISIBLE = 4
+local TRACKS_PER_PAGE = 8
 
 local PAGE_DEVICE = 1
 local PAGE_MONITOR = 2
@@ -40,9 +30,10 @@ local ui = {
     selected_device = 1,
     persist_device = 1,
     next_auto_target = 1,
-    grid_page = 1,
+    target_page = 1,
     held_target_index = nil,
     held_recording = nil,
+    event_to_target_map = {},
     midi_info = {
         rec_state = 0,
         play_state = 0,
@@ -261,9 +252,9 @@ local function redraw_grid()
 
     grid_device:all(0)
 
-    -- Render 8 targets for current page
-    local page_offset = (ui.grid_page - 1) * 8
-    for row = 1, 8 do
+    -- Render 8 targets for current grid page
+    local page_offset = (ui.target_page - 1) * TRACKS_PER_PAGE
+    for row = 1, TRACKS_PER_PAGE do
         local target_index = page_offset + row
         if target_index <= #TARGET_IDS then
             local param_id = TARGET_IDS[target_index]
@@ -276,16 +267,14 @@ local function redraw_grid()
         end
     end
 
-    -- Page indicator: prefer column 16 for combined 8x8 midigrid setups.
-    -- Fallback to reported last column only when width is narrower than 16.
+    -- Page indicator: rightmost column shows which of 4 grid pages is active
     local grid_cols = grid_device.cols or 16
     local page_switch_col = 16
     if grid_cols < 16 then
         page_switch_col = grid_cols
     end
-    local max_pages = math.ceil(#TARGET_IDS / 8)
-    for p = 1, max_pages do
-        grid_device:led(page_switch_col, p, p == ui.grid_page and 8 or 2)
+    for p = 1, TARGETS_PAGE_COUNT do
+        grid_device:led(page_switch_col, p, p == ui.target_page and 8 or 2)
     end
 
     grid_device:refresh()
@@ -458,9 +447,26 @@ end
 local function clear_target_states()
     ui.target_states = {}
     ui.learned_target_mappings = {}
+    ui.event_to_target_map = {}
     ui.next_auto_target = 1
+    ui.target_page = 1
     ui.held_target_index = nil
     ui.held_recording = nil
+end
+
+local function event_lookup_key(device_id, channel, event_id)
+    return string.format("%d:%d:%d", device_id or -1, channel or -1, event_id or -1)
+end
+
+local function register_event_to_target(device_id, channel, event_id, param_id)
+    if param_id == nil then return end
+    local key = event_lookup_key(device_id, channel, event_id)
+    ui.event_to_target_map[key] = param_id
+end
+
+local function lookup_target_for_event(device_id, channel, event_id)
+    local key = event_lookup_key(device_id, channel, event_id)
+    return ui.event_to_target_map[key]
 end
 
 local function target_channel_cc_for_index(target_index)
@@ -535,8 +541,15 @@ local function refresh_target_loop_state(device_id, channel, event_id, rec_state
         }
     end
 
-    local match_count = 0
+    -- Fast path: direct event lookup first (learned mappings)
+    local fast_param_id = lookup_target_for_event(device_id, channel, event_id)
+    if fast_param_id ~= nil then
+        apply_state(fast_param_id)
+        return
+    end
 
+    -- Fallback: check parameter mappings and learn for future callbacks
+    local match_count = 0
     for _, param_id in ipairs(TARGET_IDS) do
         local pmap = target_mapping(param_id)
         local matches = target_mapping_matches_event(param_id, pmap, device_id, channel, event_id)
@@ -544,12 +557,13 @@ local function refresh_target_loop_state(device_id, channel, event_id, rec_state
         if matches then
             match_count = match_count + 1
             apply_state(param_id)
+            register_event_to_target(device_id, channel, event_id, param_id)
+            return
         end
     end
 
-    -- If no exact mapping exists yet for this channel/CC, allocate the next
-    -- available target row and learn the mapping for subsequent callbacks.
-    if match_count == 0 then
+    -- If no exact mapping exists yet, allocate the next available target row
+    if true then
         local param_id = nil
         local index = nil
 
@@ -696,8 +710,8 @@ end
 
 local function draw_targets_page()
     local selection = ui.selection[PAGE_TARGETS]
-    local start_index = util.clamp(selection - 1, 1, math.max(#TARGET_IDS - 3, 1))
-    local stop_index = math.min(start_index + 3, #TARGET_IDS)
+    local start_index = ((ui.target_page - 1) * TARGETS_VISIBLE) + 1
+    local stop_index = math.min(start_index + TARGETS_VISIBLE - 1, #TARGET_IDS)
     local y = 26
 
     screen.level(10)
@@ -716,7 +730,7 @@ local function draw_targets_page()
 
         screen.level(active and 15 or 4)
         screen.move(2, y)
-        screen.text(string.format("%s%d", active and ">" or " ", index))
+        screen.text(string.format("%s%02d", active and ">" or " ", index))
         screen.move(24, y)
         screen.text(target_status_text(param_id))
         screen.move(48, y)
@@ -728,7 +742,7 @@ local function draw_targets_page()
 
     screen.level(10)
     screen.move(2, 61)
-    screen.text(selected_target_id())
+    screen.text(string.format("pg %d/%d", ui.target_page, TARGETS_PAGE_COUNT))
 end
 
 local function draw_message()
@@ -901,16 +915,15 @@ function init()
                 if z == 0 then
                     return
                 end
-                local max_pages = math.ceil(#TARGET_IDS / 8)
-                ui.grid_page = (ui.grid_page % max_pages) + 1
-                show_message(string.format("grid page %d", ui.grid_page))
+                cycle_target_page()
+                show_message(string.format("grid page %d", ui.target_page))
                 mark_dirty()
                 return
             end
 
             -- Any other column: select the track for that row
-            local row = (y >= 1 and y <= 8) and y or 1
-            local page_offset = (ui.grid_page - 1) * 8
+            local row = (y >= 1 and y <= TRACKS_PER_PAGE) and y or 1
+            local page_offset = (ui.target_page - 1) * TRACKS_PER_PAGE
             local target_index = page_offset + row
 
             if target_index < 1 or target_index > #TARGET_IDS then
