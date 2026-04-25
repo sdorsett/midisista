@@ -469,6 +469,10 @@ local function lookup_target_for_event(device_id, channel, event_id)
     return ui.event_to_target_map[key]
 end
 
+local function cycle_target_page()
+    ui.target_page = ui.target_page % TARGETS_PAGE_COUNT + 1
+end
+
 local function target_channel_cc_for_index(target_index)
     local param_id = TARGET_IDS[target_index]
     if param_id == nil then
