@@ -3,24 +3,13 @@ local midididi = include("midisista/lib/midididi")
 local DATA_DIR = _path.data .. "midisista/"
 local STATE_FILE = DATA_DIR .. "state.data"
 
-local TARGET_IDS = {
-    "midisista_target_1",
-    "midisista_target_2",
-    "midisista_target_3",
-    "midisista_target_4",
-    "midisista_target_5",
-    "midisista_target_6",
-    "midisista_target_7",
-    "midisista_target_8",
-    "midisista_target_9",
-    "midisista_target_10",
-    "midisista_target_11",
-    "midisista_target_12",
-    "midisista_target_13",
-    "midisista_target_14",
-    "midisista_target_15",
-    "midisista_target_16",
-}
+local TARGET_PAGE_COUNT = 8
+local TRACKS_PER_PAGE = 8
+local TARGET_COUNT = TARGET_PAGE_COUNT * TRACKS_PER_PAGE
+local TARGET_IDS = {}
+for index = 1, TARGET_COUNT do
+    TARGET_IDS[index] = "midisista_target_" .. index
+end
 
 local PAGE_DEVICE = 1
 local PAGE_MONITOR = 2
@@ -40,7 +29,7 @@ local ui = {
     selected_device = 1,
     persist_device = 1,
     next_auto_target = 1,
-    grid_page = 1,
+    target_page = 1,
     held_target_index = nil,
     held_recording = nil,
     midi_info = {
@@ -126,6 +115,7 @@ local function clamp_page_selection()
     if ui.selection[PAGE_TARGETS] > #TARGET_IDS then
         ui.selection[PAGE_TARGETS] = #TARGET_IDS
     end
+    ui.target_page = util.clamp(math.floor((ui.selection[PAGE_TARGETS] - 1) / TRACKS_PER_PAGE) + 1, 1, TARGET_PAGE_COUNT)
 end
 
 local function mark_dirty()
@@ -189,6 +179,41 @@ end
 
 local function selected_target_id()
     return TARGET_IDS[ui.selection[PAGE_TARGETS]]
+end
+
+local function target_page_count()
+    return math.max(1, math.ceil(#TARGET_IDS / TRACKS_PER_PAGE))
+end
+
+local function target_page_for_index(index)
+    if index == nil then
+        return 1
+    end
+    return util.clamp(math.floor((index - 1) / TRACKS_PER_PAGE) + 1, 1, target_page_count())
+end
+
+local function target_row_for_index(index)
+    if index == nil then
+        return 1
+    end
+    return ((index - 1) % TRACKS_PER_PAGE) + 1
+end
+
+local function index_for_target_page_row(page, row)
+    return ((page - 1) * TRACKS_PER_PAGE) + row
+end
+
+local function set_target_page(page)
+    ui.target_page = util.clamp(page, 1, target_page_count())
+
+    local row = target_row_for_index(ui.selection[PAGE_TARGETS])
+    local index = index_for_target_page_row(ui.target_page, row)
+    ui.selection[PAGE_TARGETS] = util.clamp(index, 1, #TARGET_IDS)
+end
+
+local function cycle_target_page()
+    local max_pages = target_page_count()
+    set_target_page((ui.target_page % max_pages) + 1)
 end
 
 local function target_value_text(param_id)
@@ -262,8 +287,8 @@ local function redraw_grid()
     grid_device:all(0)
 
     -- Render 8 targets for current page
-    local page_offset = (ui.grid_page - 1) * 8
-    for row = 1, 8 do
+    local page_offset = (ui.target_page - 1) * TRACKS_PER_PAGE
+    for row = 1, TRACKS_PER_PAGE do
         local target_index = page_offset + row
         if target_index <= #TARGET_IDS then
             local param_id = TARGET_IDS[target_index]
@@ -283,9 +308,9 @@ local function redraw_grid()
     if grid_cols < 16 then
         page_switch_col = grid_cols
     end
-    local max_pages = math.ceil(#TARGET_IDS / 8)
+    local max_pages = target_page_count()
     for p = 1, max_pages do
-        grid_device:led(page_switch_col, p, p == ui.grid_page and 8 or 2)
+        grid_device:led(page_switch_col, p, p == ui.target_page and 8 or 2)
     end
 
     grid_device:refresh()
@@ -459,6 +484,7 @@ local function clear_target_states()
     ui.target_states = {}
     ui.learned_target_mappings = {}
     ui.next_auto_target = 1
+    ui.target_page = 1
     ui.held_target_index = nil
     ui.held_recording = nil
 end
@@ -696,10 +722,11 @@ end
 
 local function draw_targets_page()
     local selection = ui.selection[PAGE_TARGETS]
-    local start_index = util.clamp(selection - 1, 1, math.max(#TARGET_IDS - 3, 1))
-    local stop_index = math.min(start_index + 3, #TARGET_IDS)
-    local y = 26
+    local start_index = ((ui.target_page - 1) * TRACKS_PER_PAGE) + 1
+    local stop_index = math.min(start_index + TRACKS_PER_PAGE - 1, #TARGET_IDS)
+    local y = 22
 
+    screen.font_size(6)
     screen.level(10)
     screen.move(2, 17)
     screen.text("tg")
@@ -716,19 +743,19 @@ local function draw_targets_page()
 
         screen.level(active and 15 or 4)
         screen.move(2, y)
-        screen.text(string.format("%s%d", active and ">" or " ", index))
+        screen.text(string.format("%s%02d", active and ">" or " ", index))
         screen.move(24, y)
         screen.text(target_status_text(param_id))
         screen.move(48, y)
         screen.text(target_channel_cc_text(param_id))
         screen.move(126, y)
         screen.text_right(target_display_value_text(param_id))
-        y = y + 9
+        y = y + 5
     end
 
     screen.level(10)
     screen.move(2, 61)
-    screen.text(selected_target_id())
+    screen.text(string.format("pg %d/%d", ui.target_page, target_page_count()))
 end
 
 local function draw_message()
@@ -901,16 +928,15 @@ function init()
                 if z == 0 then
                     return
                 end
-                local max_pages = math.ceil(#TARGET_IDS / 8)
-                ui.grid_page = (ui.grid_page % max_pages) + 1
-                show_message(string.format("grid page %d", ui.grid_page))
+                cycle_target_page()
+                show_message(string.format("grid page %d", ui.target_page))
                 mark_dirty()
                 return
             end
 
             -- Any other column: select the track for that row
-            local row = (y >= 1 and y <= 8) and y or 1
-            local page_offset = (ui.grid_page - 1) * 8
+            local row = (y >= 1 and y <= TRACKS_PER_PAGE) and y or 1
+            local page_offset = (ui.target_page - 1) * TRACKS_PER_PAGE
             local target_index = page_offset + row
 
             if target_index < 1 or target_index > #TARGET_IDS then
@@ -990,7 +1016,9 @@ function enc(n, d)
         if ui.page == PAGE_DEVICE then
             ui.selection[PAGE_DEVICE] = util.clamp(ui.selection[PAGE_DEVICE] + encoder_delta(d), 1, 2)
         elseif ui.page == PAGE_TARGETS then
-            ui.selection[PAGE_TARGETS] = util.clamp(ui.selection[PAGE_TARGETS] + encoder_delta(d), 1, #TARGET_IDS)
+            local row = target_row_for_index(ui.selection[PAGE_TARGETS])
+            row = util.clamp(row + encoder_delta(d), 1, TRACKS_PER_PAGE)
+            ui.selection[PAGE_TARGETS] = index_for_target_page_row(ui.target_page, row)
         end
         mark_dirty()
         return
@@ -1016,7 +1044,12 @@ function key(n, z)
         ui.page = PAGE_MONITOR
         show_message("monitor")
     elseif n == 3 then
-        ui.page = PAGE_TARGETS
-        show_message("targets")
+        if ui.page == PAGE_TARGETS then
+            cycle_target_page()
+            show_message(string.format("targets pg %d", ui.target_page))
+        else
+            ui.page = PAGE_TARGETS
+            show_message("targets")
+        end
     end
 end

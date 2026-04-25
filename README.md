@@ -7,8 +7,8 @@ Plain Norns script starter built from the MIDI loop engine in `midididi`.
 - MIDI CC loop capture and playback through `reflection`
 - Plain script `init()` and `cleanup()` instead of a Norns mod wrapper
 - Hybrid UI: params for setup and mapping, screen for live status
-- Sixteen starter target params that can be MIDI-mapped through Norns
-- Grid visualization for 16 tracks split across 2 pages (8 tracks per page)
+- Sixty-four target params organized as 8 pages of 8 tracks
+- Grid visualization for 64 tracks split across 8 pages (8 tracks per page)
 - Optional midigrid support for MIDI-grid devices
 
 ## Controls
@@ -17,13 +17,13 @@ Plain Norns script starter built from the MIDI loop engine in `midididi`.
 - `E2`: select field or target
 - `E3`: edit the selected value
 - `K2`: jump to monitor page
-- `K3`: jump to targets page
+- `K3`: jump to targets page, then cycle target pages when already on TARGETS
 
 ## Pages
 
 - `DEVICE`: choose the active MIDI device and whether that device selection is persisted
 - `MONITOR`: view the latest incoming MIDI event and recording state
-- `TARGETS`: view up to sixteen target rows with per-row status, mapped channel/CC, and live loop values
+- `TARGETS`: view 8 target rows per page (64 total across 8 pages) with per-row status, mapped channel/CC, and live loop values
 
 ## Mapping Flow
 
@@ -36,18 +36,19 @@ Plain Norns script starter built from the MIDI loop engine in `midididi`.
 
 ## TARGETS Behavior
 
-- Each target row represents one visible loop slot (16 total, shown 4 per screen view).
+- Each target row represents one visible loop slot (64 total; 8 rows per page across 8 pages).
 - `st` shows `rec` while a loop is recording and `ply` while it is playing back.
 - `ch/cc` shows the mapped MIDI channel and CC number for that row.
 - `val` shows the most recent live CC value for that row during record or playback.
+- `pg` footer shows the current TARGETS page.
 - When a new loop is recorded, the next available target row is used for that loop's displayed mapping and value.
 - TARGET row matching is learned from live callback data so displayed rows stay aligned with working loop playback.
 
 ## Grid Behavior
 
 - Press any key in **column 16** (rightmost column) to cycle between pages.
-- Page 1 displays targets 1-8; page 2 displays targets 9-16.
-- Column 16 shows a dim page indicator: the current page row lights brighter than the other.
+- Pages advance through all 8 track banks (1-8, 9-16, ... , 57-64).
+- Column 16 shows a dim page indicator: the current page row lights brighter than the others.
 - On each page, each row maps to one target track (rows 1-8 on grid).
 - Hold any row key in columns 1-15 to record CC into that row's target track.
 - Releasing that row key stops recording and starts playback for that same track.
