@@ -343,7 +343,7 @@ local function target_selected_debug_text()
     local match_count = ui.last_loop_match_count or 0
 
     return string.format(
-        "sel %d m:%s r:%s p:%s h:%d",
+        "sel%d m:%s r:%s p:%s h:%d",
         ui.selection[PAGE_TARGETS],
         matches and "y" or "n",
         rec_state,
@@ -489,10 +489,8 @@ local function draw_targets_page()
     screen.level(10)
     screen.move(2, 54)
     screen.text(target_selected_debug_text())
-    screen.move(126, 54)
-    screen.text_right(target_debug_line_1())
-    screen.move(126, 61)
-    screen.text_right(target_debug_line_2())
+    screen.move(2, 61)
+    screen.text(target_debug_line_1() .. " " .. target_debug_line_2())
 end
 
 local function draw_message()
