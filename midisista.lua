@@ -271,8 +271,17 @@ local function redraw_grid()
                 if right_col == left_col then
                     grid_device:led(left_col, row, level)
                 else
-                    local left_level = util.clamp(math.floor(((1 - frac) * level) + 0.5), 0, 15)
-                    local right_level = util.clamp(math.floor((frac * level) + 0.5), 0, 15)
+                    -- Sharper than linear crossfade: nearest column stays dominant longer.
+                    local sharpness = 2.2
+                    local left_weight = math.pow(1 - frac, sharpness)
+                    local right_weight = math.pow(frac, sharpness)
+                    local weight_total = left_weight + right_weight
+                    local left_level = 0
+                    local right_level = 0
+                    if weight_total > 0 then
+                        left_level = util.clamp(math.floor(((left_weight / weight_total) * level) + 0.5), 0, 15)
+                        right_level = util.clamp(math.floor(((right_weight / weight_total) * level) + 0.5), 0, 15)
+                    end
 
                     if left_level > 0 then
                         grid_device:led(left_col, row, left_level)
