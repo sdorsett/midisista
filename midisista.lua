@@ -40,6 +40,13 @@ local ui = {
         value = nil,
         event_name = "--",
     },
+    last_loop_event = {
+        device_id = nil,
+        channel = nil,
+        event_id = nil,
+        value = nil,
+        event_name = "--",
+    },
     target_states = {},
 }
 
@@ -286,6 +293,17 @@ local function target_channel_cc_text(param_id)
     return string.format("%d/%d", pmap.ch, pmap.cc)
 end
 
+local function target_debug_text()
+    local event = ui.last_loop_event
+    local device_id = event.device_id ~= nil and tostring(event.device_id) or "--"
+    local channel = event.channel ~= nil and tostring(event.channel) or "--"
+    local event_id = event.event_id ~= nil and tostring(event.event_id) or "--"
+    local value = event.value ~= nil and tostring(event.value) or "--"
+    local event_name = event.event_name or "--"
+
+    return string.format("cb %s %s/%s %s %s", device_id, channel, event_id, event_name, value)
+end
+
 local function ensure_target_pmaps()
     if norns.pmap == nil or norns.pmap.data == nil or norns.pmap.new == nil then
         return
@@ -423,6 +441,8 @@ local function draw_targets_page()
     screen.level(10)
     screen.move(2, 61)
     screen.text(selected_target_id())
+    screen.move(126, 61)
+    screen.text_right(target_debug_text())
 end
 
 local function draw_message()
@@ -556,6 +576,11 @@ function init()
         mark_dirty()
     end)
     midididi.on_loop_state_change(function(device_id, channel, event_id, rec_state, play_state, value, event_name)
+        ui.last_loop_event.device_id = device_id
+        ui.last_loop_event.channel = channel
+        ui.last_loop_event.event_id = event_id
+        ui.last_loop_event.value = value
+        ui.last_loop_event.event_name = event_name or "--"
         refresh_target_loop_state(device_id, channel, event_id, rec_state, play_state, value, event_name)
         if ui.midi_info.device_id == device_id and ui.midi_info.channel == channel and ui.midi_info.event_id == event_id then
             ui.midi_info.play_state = play_state or 0
