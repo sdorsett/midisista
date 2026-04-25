@@ -262,8 +262,25 @@ local function redraw_grid()
             local level = grid_row_level(param_id)
             if level > 0 then
                 local value = target_numeric_value(param_id)
-                local column = grid_column_for_value(value)
-                grid_device:led(column, row, level)
+                -- Blend neighboring columns for smoother perceived motion as values change.
+                local position = ((value / 127) * 14) + 1
+                local left_col = util.clamp(math.floor(position), 1, 15)
+                local right_col = util.clamp(left_col + 1, 1, 15)
+                local frac = util.clamp(position - left_col, 0, 1)
+
+                if right_col == left_col then
+                    grid_device:led(left_col, row, level)
+                else
+                    local left_level = util.clamp(math.floor(((1 - frac) * level) + 0.5), 0, 15)
+                    local right_level = util.clamp(math.floor((frac * level) + 0.5), 0, 15)
+
+                    if left_level > 0 then
+                        grid_device:led(left_col, row, left_level)
+                    end
+                    if right_level > 0 then
+                        grid_device:led(right_col, row, right_level)
+                    end
+                end
             end
         end
     end
