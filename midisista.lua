@@ -919,9 +919,11 @@ function init()
                 if z == 0 then
                     return
                 end
-                cycle_target_page()
-                show_message(string.format("grid page %d", ui.target_page))
-                mark_dirty()
+                if y >= 1 and y <= TARGETS_PAGE_COUNT then
+                    ui.target_page = y
+                    show_message(string.format("grid page %d", ui.target_page))
+                    mark_dirty()
+                end
                 return
             end
 
