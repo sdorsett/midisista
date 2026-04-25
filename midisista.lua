@@ -304,15 +304,21 @@ local function target_channel_cc_text(param_id)
     return string.format("%d/%d", pmap.ch, pmap.cc)
 end
 
-local function target_debug_text()
+local function target_debug_line_1()
     local event = ui.last_loop_event
     local device_id = event.device_id ~= nil and tostring(event.device_id) or "--"
     local channel = event.channel ~= nil and tostring(event.channel) or "--"
     local event_id = event.event_id ~= nil and tostring(event.event_id) or "--"
+
+    return string.format("cb %s %s/%s", device_id, channel, event_id)
+end
+
+local function target_debug_line_2()
+    local event = ui.last_loop_event
     local value = event.value ~= nil and tostring(event.value) or "--"
     local event_name = event.event_name or "--"
 
-    return string.format("cb %s %s/%s %s %s", device_id, channel, event_id, event_name, value)
+    return string.format("%s %s", event_name, value)
 end
 
 local function ensure_target_pmaps()
@@ -420,7 +426,7 @@ end
 local function draw_targets_page()
     local selection = ui.selection[PAGE_TARGETS]
     local start_index = util.clamp(selection - 1, 1, math.max(#TARGET_IDS - 3, 1))
-    local stop_index = math.min(start_index + 3, #TARGET_IDS)
+    local stop_index = math.min(start_index + 2, #TARGET_IDS)
     local y = 26
 
     screen.level(10)
@@ -450,10 +456,12 @@ local function draw_targets_page()
     end
 
     screen.level(10)
-    screen.move(2, 61)
+    screen.move(2, 54)
     screen.text(selected_target_id())
+    screen.move(126, 54)
+    screen.text_right(target_debug_line_1())
     screen.move(126, 61)
-    screen.text_right(target_debug_text())
+    screen.text_right(target_debug_line_2())
 end
 
 local function draw_message()
