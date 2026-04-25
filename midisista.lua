@@ -274,6 +274,12 @@ local function redraw_grid()
         end
     end
 
+    -- Page indicator: column 16, row = current page (dim)
+    local max_pages = math.ceil(#TARGET_IDS / 8)
+    for p = 1, max_pages do
+        grid_device:led(16, p, p == ui.grid_page and 8 or 2)
+    end
+
     grid_device:refresh()
 end
 
@@ -844,8 +850,8 @@ function init()
                 return
             end
 
-            -- Top-left corner cycles through grid pages
-            if x == 1 and y == 8 then
+            -- Column 16 (rightmost) on any row cycles grid pages
+            if x == 16 then
                 local max_pages = math.ceil(#TARGET_IDS / 8)
                 ui.grid_page = (ui.grid_page % max_pages) + 1
                 show_message(string.format("grid page %d", ui.grid_page))
@@ -853,15 +859,14 @@ function init()
                 return
             end
 
-            -- Pressing rows 1-8 selects targets
-            if y >= 1 and y <= 8 then
-                local page_offset = (ui.grid_page - 1) * 8
-                local target_index = page_offset + y
-                if target_index <= #TARGET_IDS then
-                    ui.page = PAGE_TARGETS
-                    ui.selection[PAGE_TARGETS] = target_index
-                    show_message(string.format("target %d", target_index))
-                end
+            -- Pressing rows 1-8 (or 0-7 for 0-indexed grids) selects targets
+            local row = (y == 0 or y > 8) and 1 or y
+            local page_offset = (ui.grid_page - 1) * 8
+            local target_index = page_offset + row
+            if target_index >= 1 and target_index <= #TARGET_IDS then
+                ui.page = PAGE_TARGETS
+                ui.selection[PAGE_TARGETS] = target_index
+                show_message(string.format("target %d", target_index))
             end
         end
 

@@ -45,13 +45,14 @@ Plain Norns script starter built from the MIDI loop engine in `midididi`.
 
 ## Grid Behavior
 
-- Press the grid key at position (1, 8) (bottom-left corner) to cycle between pages.
+- Press any key in **column 16** (rightmost column) to cycle between pages.
 - Page 1 displays targets 1-8; page 2 displays targets 9-16.
+- Column 16 shows a dim page indicator: the current page row lights brighter than the other.
 - On each page, each row maps to one target track (rows 1-8 on grid).
-- Each row lights one LED on the horizontal axis based on the current CC value (`0..127` mapped to `1..16`).
+- Each row lights one LED in columns 1-15 based on the current CC value (`0..127` mapped to `1..16`).
 - Brighter LEDs indicate active recording (`rec=15`) and medium LEDs indicate playback (`ply=10`).
 - Dimmer LEDs indicate stored values on idle loops (`stored=6`).
-- Pressing any grid key in a row selects that target row on the norns TARGETS page.
+- Pressing any grid key in a row (columns 1-15) selects that target row on the norns TARGETS page.
 
 ## Midigrid Support
 
