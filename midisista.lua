@@ -260,14 +260,24 @@ local function refresh_target_loop_state(device_id, channel, event_id, rec_state
         if target_mapping_matches_event(pmap, device_id, channel, event_id) then
             local previous_state = ui.target_states[param_id] or {}
             local next_value = previous_state.value
+            local next_rec_state = rec_state
+            local next_play_state = play_state
 
             if value ~= nil and (event_name == "cc" or event_name == "play") then
                 next_value = value
             end
 
+            if next_rec_state == nil then
+                next_rec_state = previous_state.rec_state or 0
+            end
+
+            if next_play_state == nil then
+                next_play_state = previous_state.play_state or 0
+            end
+
             ui.target_states[param_id] = {
-                rec_state = rec_state,
-                play_state = play_state,
+                rec_state = next_rec_state,
+                play_state = next_play_state,
                 value = next_value,
             }
         end
@@ -572,7 +582,7 @@ function init()
     params:set("midisista_midi_device", ui.selected_device)
 
     midididi.on_rec_change(function(device_id, channel, event_id, rec_state)
-        refresh_target_loop_state(device_id, channel, event_id, rec_state, 0, nil, nil)
+        refresh_target_loop_state(device_id, channel, event_id, rec_state, nil, nil, nil)
         mark_dirty()
     end)
     midididi.on_loop_state_change(function(device_id, channel, event_id, rec_state, play_state, value, event_name)
