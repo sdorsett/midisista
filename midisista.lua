@@ -41,6 +41,8 @@ local ui = {
     persist_device = 1,
     next_auto_target = 1,
     grid_page = 1,
+    held_target_index = nil,
+    held_recording = nil,
     midi_info = {
         rec_state = 0,
         play_state = 0,
@@ -457,6 +459,32 @@ local function clear_target_states()
     ui.target_states = {}
     ui.learned_target_mappings = {}
     ui.next_auto_target = 1
+    ui.held_target_index = nil
+    ui.held_recording = nil
+end
+
+local function target_channel_cc_for_index(target_index)
+    local param_id = TARGET_IDS[target_index]
+    if param_id == nil then
+        return nil, nil
+    end
+
+    local pmap = target_assigned_mapping(param_id)
+    if pmap ~= nil and pmap.ch ~= nil and pmap.cc ~= nil then
+        local ch = tonumber(pmap.ch)
+        local cc = tonumber(pmap.cc)
+        if ch ~= nil and cc ~= nil then
+            return ch, cc
+        end
+    end
+
+    local info_ch = tonumber(ui.midi_info.channel)
+    local info_cc = tonumber(ui.midi_info.event_id)
+    if info_ch ~= nil and info_cc ~= nil then
+        return info_ch, info_cc
+    end
+
+    return nil, nil
 end
 
 local function next_available_target()
@@ -522,7 +550,16 @@ local function refresh_target_loop_state(device_id, channel, event_id, rec_state
     -- If no exact mapping exists yet for this channel/CC, allocate the next
     -- available target row and learn the mapping for subsequent callbacks.
     if match_count == 0 then
-        local param_id, index = next_available_target()
+        local param_id = nil
+        local index = nil
+
+        if ui.held_target_index ~= nil then
+            index = util.clamp(ui.held_target_index, 1, #TARGET_IDS)
+            param_id = TARGET_IDS[index]
+        else
+            param_id, index = next_available_target()
+        end
+
         if param_id ~= nil then
             ui.learned_target_mappings[param_id] = {
                 dev = device_id,
@@ -852,10 +889,6 @@ function init()
     grid_device = connect_grid_device()
     if grid_device ~= nil then
         grid_device.key = function(x, y, z)
-            if z == 0 then
-                return
-            end
-
             -- Prefer column 16 for page switching on 16-column layouts.
             -- If the backend reports fewer columns, use its rightmost column.
             local grid_cols = grid_device.cols or 16
@@ -865,6 +898,9 @@ function init()
             end
 
             if x == page_switch_col then
+                if z == 0 then
+                    return
+                end
                 local max_pages = math.ceil(#TARGET_IDS / 8)
                 ui.grid_page = (ui.grid_page % max_pages) + 1
                 show_message(string.format("grid page %d", ui.grid_page))
@@ -876,10 +912,49 @@ function init()
             local row = (y >= 1 and y <= 8) and y or 1
             local page_offset = (ui.grid_page - 1) * 8
             local target_index = page_offset + row
-            if target_index >= 1 and target_index <= #TARGET_IDS then
+
+            if target_index < 1 or target_index > #TARGET_IDS then
+                return
+            end
+
+            if z == 1 then
                 ui.page = PAGE_TARGETS
                 ui.selection[PAGE_TARGETS] = target_index
-                show_message(string.format("target %d", target_index))
+                ui.held_target_index = target_index
+
+                local ch, cc = target_channel_cc_for_index(target_index)
+                if ch ~= nil and cc ~= nil and midididi.start_recording ~= nil and midididi.start_recording(ch, cc) then
+                    local param_id = TARGET_IDS[target_index]
+                    ui.learned_target_mappings[param_id] = {
+                        dev = ui.selected_device,
+                        ch = ch,
+                        cc = cc,
+                    }
+                    ui.held_recording = {
+                        target_index = target_index,
+                        ch = ch,
+                        cc = cc,
+                    }
+                    show_message(string.format("rec t%d", target_index))
+                else
+                    ui.held_recording = nil
+                    show_message(string.format("hold t%d", target_index))
+                end
+                mark_dirty()
+            elseif z == 0 then
+                if ui.held_recording ~= nil and ui.held_recording.target_index == target_index then
+                    if midididi.stop_recording ~= nil then
+                        midididi.stop_recording(ui.held_recording.ch, ui.held_recording.cc)
+                    end
+                    show_message(string.format("stop t%d", target_index))
+                end
+
+                if ui.held_target_index == target_index then
+                    ui.held_target_index = nil
+                end
+
+                ui.held_recording = nil
+                mark_dirty()
             end
         end
 

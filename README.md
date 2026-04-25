@@ -49,10 +49,12 @@ Plain Norns script starter built from the MIDI loop engine in `midididi`.
 - Page 1 displays targets 1-8; page 2 displays targets 9-16.
 - Column 16 shows a dim page indicator: the current page row lights brighter than the other.
 - On each page, each row maps to one target track (rows 1-8 on grid).
+- Hold any row key in columns 1-15 to record CC into that row's target track.
+- Releasing that row key stops recording and starts playback for that same track.
 - Each row lights one LED in columns 1-15 based on the current CC value (`0..127` mapped to `1..16`).
 - Brighter LEDs indicate active recording (`rec=15`) and medium LEDs indicate playback (`ply=10`).
 - Dimmer LEDs indicate stored values on idle loops (`stored=6`).
-- Pressing any grid key in a row (columns 1-15) selects that target row on the norns TARGETS page.
+- Pressing any grid key in a row (columns 1-15) also selects that target row on the norns TARGETS page.
 
 ## Midigrid Support
 
