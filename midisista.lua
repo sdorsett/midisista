@@ -951,6 +951,17 @@ function init()
                 return
             end
 
+            -- Column 1 is a safe select lane: focus target without starting/stopping recording.
+            if x == 1 then
+                if z == 1 then
+                    ui.page = PAGE_TARGETS
+                    ui.selection[PAGE_TARGETS] = target_index
+                    show_message(string.format("sel t%d", target_index))
+                    mark_dirty()
+                end
+                return
+            end
+
             if z == 1 then
                 ui.page = PAGE_TARGETS
                 ui.selection[PAGE_TARGETS] = target_index
