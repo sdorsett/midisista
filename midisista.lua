@@ -48,6 +48,7 @@ local ui = {
         event_name = "--",
     },
     last_loop_match_count = 0,
+    last_loop_fallback_match = false,
     target_states = {},
 }
 
@@ -257,34 +258,53 @@ local function refresh_target_loop_state(device_id, channel, event_id, rec_state
         return
     end
 
+    local function apply_state(param_id)
+        local previous_state = ui.target_states[param_id] or {}
+        local next_value = previous_state.value
+        local next_rec_state = rec_state
+        local next_play_state = play_state
+
+        if value ~= nil and (event_name == "cc" or event_name == "play") then
+            next_value = value
+        end
+
+        if next_rec_state == nil then
+            next_rec_state = previous_state.rec_state or 0
+        end
+
+        if next_play_state == nil then
+            next_play_state = previous_state.play_state or 0
+        end
+
+        ui.target_states[param_id] = {
+            rec_state = next_rec_state,
+            play_state = next_play_state,
+            value = next_value,
+        }
+    end
+
     local match_count = 0
 
     for _, param_id in ipairs(TARGET_IDS) do
         local pmap = target_mapping(param_id)
         if target_mapping_matches_event(pmap, device_id, channel, event_id) then
             match_count = match_count + 1
-            local previous_state = ui.target_states[param_id] or {}
-            local next_value = previous_state.value
-            local next_rec_state = rec_state
-            local next_play_state = play_state
+            apply_state(param_id)
+        end
+    end
 
-            if value ~= nil and (event_name == "cc" or event_name == "play") then
-                next_value = value
+    ui.last_loop_fallback_match = false
+
+    -- Fallback: if channel+CC match fails entirely, bind rows by CC so TARGETS can
+    -- still reflect loop state when callback channel identity is inconsistent.
+    if match_count == 0 then
+        for _, param_id in ipairs(TARGET_IDS) do
+            local pmap = target_mapping(param_id)
+            if pmap ~= nil and values_match(pmap.cc, event_id) then
+                match_count = match_count + 1
+                apply_state(param_id)
+                ui.last_loop_fallback_match = true
             end
-
-            if next_rec_state == nil then
-                next_rec_state = previous_state.rec_state or 0
-            end
-
-            if next_play_state == nil then
-                next_play_state = previous_state.play_state or 0
-            end
-
-            ui.target_states[param_id] = {
-                rec_state = next_rec_state,
-                play_state = next_play_state,
-                value = next_value,
-            }
         end
     end
 
@@ -341,14 +361,16 @@ local function target_selected_debug_text()
     local rec_state = state.rec_state ~= nil and tostring(state.rec_state) or "-"
     local play_state = state.play_state ~= nil and tostring(state.play_state) or "-"
     local match_count = ui.last_loop_match_count or 0
+    local fallback = ui.last_loop_fallback_match and "y" or "n"
 
     return string.format(
-        "sel%d m:%s r:%s p:%s h:%d",
+        "sel%d m:%s r:%s p:%s h:%d f:%s",
         ui.selection[PAGE_TARGETS],
         matches and "y" or "n",
         rec_state,
         play_state,
-        match_count
+        match_count,
+        fallback
     )
 end
 
