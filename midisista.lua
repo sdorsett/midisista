@@ -50,6 +50,7 @@ local ui = {
     last_loop_match_count = 0,
     last_loop_fallback_match = false,
     last_loop_forced_selected = false,
+    last_loop_matched_target = nil,
     target_states = {},
 }
 
@@ -338,6 +339,7 @@ local function refresh_target_loop_state(device_id, channel, event_id, rec_state
     end
 
     local match_count = 0
+    local matched_target_index = nil
 
     for _, param_id in ipairs(TARGET_IDS) do
         local pmap = target_mapping(param_id)
@@ -345,6 +347,14 @@ local function refresh_target_loop_state(device_id, channel, event_id, rec_state
             or target_rev_matches_event(param_id, channel, event_id)
         if matches then
             match_count = match_count + 1
+            if matched_target_index == nil then
+                for index, target_id in ipairs(TARGET_IDS) do
+                    if target_id == param_id then
+                        matched_target_index = index
+                        break
+                    end
+                end
+            end
             apply_state(param_id)
         end
     end
@@ -358,6 +368,14 @@ local function refresh_target_loop_state(device_id, channel, event_id, rec_state
             local pmap = target_mapping(param_id)
             if pmap ~= nil and values_match(pmap.cc, event_id) then
                 match_count = match_count + 1
+                if matched_target_index == nil then
+                    for index, target_id in ipairs(TARGET_IDS) do
+                        if target_id == param_id then
+                            matched_target_index = index
+                            break
+                        end
+                    end
+                end
                 apply_state(param_id)
                 ui.last_loop_fallback_match = true
             end
@@ -371,9 +389,11 @@ local function refresh_target_loop_state(device_id, channel, event_id, rec_state
         apply_state(selected_target_id())
         match_count = 1
         ui.last_loop_forced_selected = true
+        matched_target_index = ui.selection[PAGE_TARGETS]
     end
 
     ui.last_loop_match_count = match_count
+    ui.last_loop_matched_target = matched_target_index
 end
 
 local function target_status_text(param_id)
@@ -429,12 +449,13 @@ local function target_selected_debug_text()
     local match_count = ui.last_loop_match_count or 0
     local fallback = ui.last_loop_fallback_match and "y" or "n"
     local forced = ui.last_loop_forced_selected and "y" or "n"
+    local matched_target = ui.last_loop_matched_target ~= nil and tostring(ui.last_loop_matched_target) or "-"
     local mapped = target_assigned_mapping(param_id)
     local mapped_channel = (mapped ~= nil and mapped.ch ~= nil) and tostring(math.floor(tonumber(mapped.ch) + 0.5)) or "--"
     local mapped_cc = (mapped ~= nil and mapped.cc ~= nil) and tostring(math.floor(tonumber(mapped.cc) + 0.5)) or "--"
 
     return string.format(
-        "sel%d %s/%s m:%s r:%s p:%s h:%d f:%s g:%s",
+        "s%d %s/%s m%s r%s p%s h%d f%s g%s t%s",
         ui.selection[PAGE_TARGETS],
         mapped_channel,
         mapped_cc,
@@ -443,7 +464,8 @@ local function target_selected_debug_text()
         play_state,
         match_count,
         fallback,
-        forced
+        forced,
+        matched_target
     )
 end
 
