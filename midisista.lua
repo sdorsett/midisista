@@ -244,7 +244,16 @@ local function target_mapping_matches_event(pmap, device_id, channel, event_id)
         return false
     end
 
-    return target_mapping_device_matches(pmap.dev, device_id)
+    if pmap.dev == nil then
+        return true
+    end
+
+    if target_mapping_device_matches(pmap.dev, device_id)
+        or target_mapping_device_matches(pmap.dev, ui.midi_info.device_id) then
+        return true
+    end
+
+    return values_match(pmap.dev, ui.selected_device)
 end
 
 local function clear_target_states()
