@@ -602,6 +602,11 @@ local function refresh_target_loop_state(device_id, channel, event_id, rec_state
             apply_state(param_id)
             match_count = 1
             ui.next_auto_target = (index % #TARGET_IDS) + 1
+        elseif ui.page == PAGE_TARGETS then
+            -- Selected page has no free rows for new auto-learn assignments.
+            if ui.message ~= "page full" or util.time() > ui.message_until then
+                show_message("page full")
+            end
         end
     end
 end
