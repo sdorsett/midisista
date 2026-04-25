@@ -497,9 +497,24 @@ local function target_channel_cc_for_index(target_index)
     return nil, nil
 end
 
-local function next_available_target()
+local function next_available_target(preferred_page)
     local total = #TARGET_IDS
     if total == 0 then
+        return nil, nil
+    end
+
+    if preferred_page ~= nil then
+        local page = util.clamp(preferred_page, 1, TARGETS_PAGE_COUNT)
+        local page_start = ((page - 1) * TRACKS_PER_PAGE) + 1
+        local page_stop = math.min(page_start + TRACKS_PER_PAGE - 1, total)
+
+        for index = page_start, page_stop do
+            local param_id = TARGET_IDS[index]
+            if target_assigned_mapping(param_id) == nil then
+                return param_id, index
+            end
+        end
+
         return nil, nil
     end
 
@@ -566,7 +581,7 @@ local function refresh_target_loop_state(device_id, channel, event_id, rec_state
         end
     end
 
-    -- If no exact mapping exists yet, allocate the next available target row
+    -- If no exact mapping exists yet, allocate on the currently selected page
     if true then
         local param_id = nil
         local index = nil
@@ -575,7 +590,7 @@ local function refresh_target_loop_state(device_id, channel, event_id, rec_state
             index = util.clamp(ui.held_target_index, 1, #TARGET_IDS)
             param_id = TARGET_IDS[index]
         else
-            param_id, index = next_available_target()
+            param_id, index = next_available_target(ui.target_page)
         end
 
         if param_id ~= nil then
