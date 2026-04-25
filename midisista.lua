@@ -249,6 +249,23 @@ local function target_mapping_matches_event(pmap, device_id, channel, event_id)
     return true
 end
 
+local function target_rev_matches_event(param_id, channel, event_id)
+    if norns.pmap == nil or norns.pmap.rev == nil then
+        return false
+    end
+
+    for _, by_channel in pairs(norns.pmap.rev) do
+        if by_channel ~= nil then
+            local by_cc = by_channel[channel]
+            if by_cc ~= nil and by_cc[event_id] == param_id then
+                return true
+            end
+        end
+    end
+
+    return false
+end
+
 local function clear_target_states()
     ui.target_states = {}
 end
@@ -287,7 +304,9 @@ local function refresh_target_loop_state(device_id, channel, event_id, rec_state
 
     for _, param_id in ipairs(TARGET_IDS) do
         local pmap = target_mapping(param_id)
-        if target_mapping_matches_event(pmap, device_id, channel, event_id) then
+        local matches = target_mapping_matches_event(pmap, device_id, channel, event_id)
+            or target_rev_matches_event(param_id, channel, event_id)
+        if matches then
             match_count = match_count + 1
             apply_state(param_id)
         end
