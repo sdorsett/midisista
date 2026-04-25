@@ -47,6 +47,7 @@ local ui = {
         value = nil,
         event_name = "--",
     },
+    last_loop_match_count = 0,
     target_states = {},
 }
 
@@ -256,9 +257,12 @@ local function refresh_target_loop_state(device_id, channel, event_id, rec_state
         return
     end
 
+    local match_count = 0
+
     for _, param_id in ipairs(TARGET_IDS) do
         local pmap = target_mapping(param_id)
         if target_mapping_matches_event(pmap, device_id, channel, event_id) then
+            match_count = match_count + 1
             local previous_state = ui.target_states[param_id] or {}
             local next_value = previous_state.value
             local next_rec_state = rec_state
@@ -283,6 +287,8 @@ local function refresh_target_loop_state(device_id, channel, event_id, rec_state
             }
         end
     end
+
+    ui.last_loop_match_count = match_count
 end
 
 local function target_status_text(param_id)
@@ -334,8 +340,16 @@ local function target_selected_debug_text()
 
     local rec_state = state.rec_state ~= nil and tostring(state.rec_state) or "-"
     local play_state = state.play_state ~= nil and tostring(state.play_state) or "-"
+    local match_count = ui.last_loop_match_count or 0
 
-    return string.format("sel %d m:%s r:%s p:%s", ui.selection[PAGE_TARGETS], matches and "y" or "n", rec_state, play_state)
+    return string.format(
+        "sel %d m:%s r:%s p:%s h:%d",
+        ui.selection[PAGE_TARGETS],
+        matches and "y" or "n",
+        rec_state,
+        play_state,
+        match_count
+    )
 end
 
 local function ensure_target_pmaps()
