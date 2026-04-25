@@ -51,6 +51,7 @@ local ui = {
     last_loop_fallback_match = false,
     last_loop_forced_selected = false,
     last_loop_matched_target = nil,
+    learned_target_mappings = {},
     target_states = {},
 }
 
@@ -151,6 +152,11 @@ local function target_display_value_text(param_id)
 end
 
 local function target_mapping(param_id)
+    local learned = ui.learned_target_mappings[param_id]
+    if learned ~= nil then
+        return learned
+    end
+
     if norns.pmap == nil or norns.pmap.data == nil then
         return nil
     end
@@ -159,6 +165,11 @@ local function target_mapping(param_id)
 end
 
 local function target_mapping_from_rev(param_id)
+    local learned = ui.learned_target_mappings[param_id]
+    if learned ~= nil then
+        return learned
+    end
+
     if norns.pmap == nil or norns.pmap.rev == nil then
         return nil
     end
@@ -306,6 +317,7 @@ end
 
 local function clear_target_states()
     ui.target_states = {}
+    ui.learned_target_mappings = {}
 end
 
 local function refresh_target_loop_state(device_id, channel, event_id, rec_state, play_state, value, event_name)
@@ -386,10 +398,18 @@ local function refresh_target_loop_state(device_id, channel, event_id, rec_state
     -- TARGET row so we can verify row state/value rendering even if mapping fails.
     ui.last_loop_forced_selected = false
     if match_count == 0 and ui.page == PAGE_TARGETS then
-        apply_state(selected_target_id())
+        local selected_param_id = selected_target_id()
+        apply_state(selected_param_id)
         match_count = 1
         ui.last_loop_forced_selected = true
         matched_target_index = ui.selection[PAGE_TARGETS]
+
+        -- Auto-learn mapping for the selected row from live callback data.
+        ui.learned_target_mappings[selected_param_id] = {
+            dev = device_id,
+            ch = channel,
+            cc = event_id,
+        }
     end
 
     ui.last_loop_match_count = match_count
