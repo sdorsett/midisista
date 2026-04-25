@@ -7,8 +7,8 @@ Plain Norns script starter built from the MIDI loop engine in `midididi`.
 - MIDI CC loop capture and playback through `reflection`
 - Plain script `init()` and `cleanup()` instead of a Norns mod wrapper
 - Hybrid UI: params for setup and mapping, screen for live status
-- Eight starter target params that can be MIDI-mapped through Norns
-- Grid visualization for 8 tracks across 16 columns (8x16)
+- Sixteen starter target params that can be MIDI-mapped through Norns
+- Grid visualization for 16 tracks split across 2 pages (8 tracks per page)
 - Optional midigrid support for MIDI-grid devices
 
 ## Controls
@@ -23,7 +23,7 @@ Plain Norns script starter built from the MIDI loop engine in `midididi`.
 
 - `DEVICE`: choose the active MIDI device and whether that device selection is persisted
 - `MONITOR`: view the latest incoming MIDI event and recording state
-- `TARGETS`: view up to eight target rows with per-row status, mapped channel/CC, and live loop values
+- `TARGETS`: view up to sixteen target rows with per-row status, mapped channel/CC, and live loop values
 
 ## Mapping Flow
 
@@ -36,7 +36,7 @@ Plain Norns script starter built from the MIDI loop engine in `midididi`.
 
 ## TARGETS Behavior
 
-- Each target row represents one visible loop slot.
+- Each target row represents one visible loop slot (16 total, shown 4 per screen view).
 - `st` shows `rec` while a loop is recording and `ply` while it is playing back.
 - `ch/cc` shows the mapped MIDI channel and CC number for that row.
 - `val` shows the most recent live CC value for that row during record or playback.
@@ -45,9 +45,12 @@ Plain Norns script starter built from the MIDI loop engine in `midididi`.
 
 ## Grid Behavior
 
-- On an 8x16 grid, each row maps to one target track (rows 1-8).
+- Press the grid key at position (1, 8) (bottom-left corner) to cycle between pages.
+- Page 1 displays targets 1-8; page 2 displays targets 9-16.
+- On each page, each row maps to one target track (rows 1-8 on grid).
 - Each row lights one LED on the horizontal axis based on the current CC value (`0..127` mapped to `1..16`).
-- Brighter LEDs indicate active recording (`rec`) and medium LEDs indicate playback (`ply`).
+- Brighter LEDs indicate active recording (`rec=15`) and medium LEDs indicate playback (`ply=10`).
+- Dimmer LEDs indicate stored values on idle loops (`stored=6`).
 - Pressing any grid key in a row selects that target row on the norns TARGETS page.
 
 ## Midigrid Support

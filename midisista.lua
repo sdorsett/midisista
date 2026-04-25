@@ -12,6 +12,14 @@ local TARGET_IDS = {
     "midisista_target_6",
     "midisista_target_7",
     "midisista_target_8",
+    "midisista_target_9",
+    "midisista_target_10",
+    "midisista_target_11",
+    "midisista_target_12",
+    "midisista_target_13",
+    "midisista_target_14",
+    "midisista_target_15",
+    "midisista_target_16",
 }
 
 local PAGE_DEVICE = 1
@@ -32,6 +40,7 @@ local ui = {
     selected_device = 1,
     persist_device = 1,
     next_auto_target = 1,
+    grid_page = 1,
     midi_info = {
         rec_state = 0,
         play_state = 0,
@@ -250,13 +259,18 @@ local function redraw_grid()
 
     grid_device:all(0)
 
-    for row = 1, math.min(8, #TARGET_IDS) do
-        local param_id = TARGET_IDS[row]
-        local level = grid_row_level(param_id)
-        if level > 0 then
-            local value = target_numeric_value(param_id)
-            local column = grid_column_for_value(value)
-            grid_device:led(column, row, level)
+    -- Render 8 targets for current page
+    local page_offset = (ui.grid_page - 1) * 8
+    for row = 1, 8 do
+        local target_index = page_offset + row
+        if target_index <= #TARGET_IDS then
+            local param_id = TARGET_IDS[target_index]
+            local level = grid_row_level(param_id)
+            if level > 0 then
+                local value = target_numeric_value(param_id)
+                local column = grid_column_for_value(value)
+                grid_device:led(column, row, level)
+            end
         end
     end
 
@@ -830,10 +844,24 @@ function init()
                 return
             end
 
-            if y >= 1 and y <= #TARGET_IDS then
-                ui.page = PAGE_TARGETS
-                ui.selection[PAGE_TARGETS] = y
-                show_message(string.format("target %d", y))
+            -- Top-left corner cycles through grid pages
+            if x == 1 and y == 8 then
+                local max_pages = math.ceil(#TARGET_IDS / 8)
+                ui.grid_page = (ui.grid_page % max_pages) + 1
+                show_message(string.format("grid page %d", ui.grid_page))
+                mark_dirty()
+                return
+            end
+
+            -- Pressing rows 1-8 selects targets
+            if y >= 1 and y <= 8 then
+                local page_offset = (ui.grid_page - 1) * 8
+                local target_index = page_offset + y
+                if target_index <= #TARGET_IDS then
+                    ui.page = PAGE_TARGETS
+                    ui.selection[PAGE_TARGETS] = target_index
+                    show_message(string.format("target %d", target_index))
+                end
             end
         end
 
