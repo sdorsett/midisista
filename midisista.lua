@@ -12,6 +12,14 @@ local TARGET_IDS = {
     "midisista_target_6",
     "midisista_target_7",
     "midisista_target_8",
+    "midisista_target_9",
+    "midisista_target_10",
+    "midisista_target_11",
+    "midisista_target_12",
+    "midisista_target_13",
+    "midisista_target_14",
+    "midisista_target_15",
+    "midisista_target_16",
 }
 
 local PAGE_DEVICE = 1
