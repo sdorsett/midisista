@@ -98,7 +98,7 @@ local function connect_grid_device()
     end
 
     if midigrid_lib == nil then
-        midigrid_lib = try_include("midigrid/lib/midigrid")
+        midigrid_lib = try_include("midigrid/lib/mg_128")
     end
 
     if midigrid_2pages_lib ~= nil and midigrid_2pages_lib.connect ~= nil then
