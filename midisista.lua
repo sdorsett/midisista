@@ -274,11 +274,16 @@ local function redraw_grid()
         end
     end
 
-    -- Page indicator: rightmost column, current page row lights brighter
+    -- Page indicator: prefer column 16 for combined 8x8 midigrid setups.
+    -- Fallback to reported last column only when width is narrower than 16.
     local grid_cols = grid_device.cols or 16
+    local page_switch_col = 16
+    if grid_cols < 16 then
+        page_switch_col = grid_cols
+    end
     local max_pages = math.ceil(#TARGET_IDS / 8)
     for p = 1, max_pages do
-        grid_device:led(grid_cols, p, p == ui.grid_page and 8 or 2)
+        grid_device:led(page_switch_col, p, p == ui.grid_page and 8 or 2)
     end
 
     grid_device:refresh()
@@ -851,9 +856,15 @@ function init()
                 return
             end
 
-            -- Rightmost column of the connected grid cycles pages
+            -- Prefer column 16 for page switching on 16-column layouts.
+            -- If the backend reports fewer columns, use its rightmost column.
             local grid_cols = grid_device.cols or 16
-            if x == grid_cols then
+            local page_switch_col = 16
+            if grid_cols < 16 then
+                page_switch_col = grid_cols
+            end
+
+            if x == page_switch_col then
                 local max_pages = math.ceil(#TARGET_IDS / 8)
                 ui.grid_page = (ui.grid_page % max_pages) + 1
                 show_message(string.format("grid page %d", ui.grid_page))
