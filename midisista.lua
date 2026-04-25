@@ -49,6 +49,7 @@ local ui = {
     },
     last_loop_match_count = 0,
     last_loop_fallback_match = false,
+    last_loop_forced_selected = false,
     target_states = {},
 }
 
@@ -327,6 +328,15 @@ local function refresh_target_loop_state(device_id, channel, event_id, rec_state
         end
     end
 
+    -- Last-resort debug fallback: bind the active callback to the currently selected
+    -- TARGET row so we can verify row state/value rendering even if mapping fails.
+    ui.last_loop_forced_selected = false
+    if match_count == 0 and ui.page == PAGE_TARGETS then
+        apply_state(selected_target_id())
+        match_count = 1
+        ui.last_loop_forced_selected = true
+    end
+
     ui.last_loop_match_count = match_count
 end
 
@@ -381,15 +391,17 @@ local function target_selected_debug_text()
     local play_state = state.play_state ~= nil and tostring(state.play_state) or "-"
     local match_count = ui.last_loop_match_count or 0
     local fallback = ui.last_loop_fallback_match and "y" or "n"
+    local forced = ui.last_loop_forced_selected and "y" or "n"
 
     return string.format(
-        "sel%d m:%s r:%s p:%s h:%d f:%s",
+        "sel%d m:%s r:%s p:%s h:%d f:%s g:%s",
         ui.selection[PAGE_TARGETS],
         matches and "y" or "n",
         rec_state,
         play_state,
         match_count,
-        fallback
+        fallback,
+        forced
     )
 end
 
