@@ -12,14 +12,6 @@ local TARGET_IDS = {
     "midisista_target_6",
     "midisista_target_7",
     "midisista_target_8",
-    "midisista_target_9",
-    "midisista_target_10",
-    "midisista_target_11",
-    "midisista_target_12",
-    "midisista_target_13",
-    "midisista_target_14",
-    "midisista_target_15",
-    "midisista_target_16",
 }
 
 local PAGE_DEVICE = 1
@@ -54,6 +46,64 @@ local ui = {
 }
 
 local redraw_timer
+local grid_device
+local midigrid_lib
+local midigrid_2pages_lib
+local using_midigrid = false
+
+local function try_include(path)
+    local ok, lib = pcall(function()
+        return include(path)
+    end)
+
+    if ok then
+        return lib
+    end
+
+    return nil
+end
+
+local function native_grid_connected()
+    if grid == nil or grid.vports == nil then
+        return false
+    end
+
+    local port = grid.vports[1]
+    if port == nil or port.name == nil then
+        return false
+    end
+
+    local name = string.lower(tostring(port.name))
+    return name ~= "" and name ~= "none"
+end
+
+local function connect_grid_device()
+    using_midigrid = false
+
+    if native_grid_connected() then
+        return grid.connect()
+    end
+
+    if midigrid_2pages_lib == nil then
+        midigrid_2pages_lib = try_include("midigrid/lib/midigrid_2pages")
+    end
+
+    if midigrid_lib == nil then
+        midigrid_lib = try_include("midigrid/lib/midigrid")
+    end
+
+    if midigrid_2pages_lib ~= nil and midigrid_2pages_lib.connect ~= nil then
+        using_midigrid = true
+        return midigrid_2pages_lib.connect()
+    end
+
+    if midigrid_lib ~= nil and midigrid_lib.connect ~= nil then
+        using_midigrid = true
+        return midigrid_lib.connect()
+    end
+
+    return nil
+end
 
 local function clamp_page_selection()
     if ui.selection[PAGE_DEVICE] > 2 then
@@ -147,6 +197,70 @@ local function target_display_value_text(param_id)
     end
 
     return target_value_text(param_id)
+end
+
+local function target_numeric_value(param_id)
+    local state = ui.target_states[param_id]
+    local value = nil
+
+    if state ~= nil and state.value ~= nil then
+        value = tonumber(state.value)
+    end
+
+    if value == nil then
+        value = tonumber(params:get(param_id))
+    end
+
+    if value == nil then
+        value = 0
+    end
+
+    return util.clamp(math.floor(value + 0.5), 0, 127)
+end
+
+local function grid_column_for_value(value)
+    return util.clamp(math.floor((value / 127) * 15) + 1, 1, 16)
+end
+
+local function grid_row_level(param_id)
+    local state = ui.target_states[param_id]
+    if state == nil then
+        return 0
+    end
+
+    if state.rec_state == 1 then
+        return 15
+    end
+
+    if state.play_state == 1 then
+        return 10
+    end
+
+    if state.value ~= nil then
+        return 6
+    end
+
+    return 0
+end
+
+local function redraw_grid()
+    if grid_device == nil then
+        return
+    end
+
+    grid_device:all(0)
+
+    for row = 1, math.min(8, #TARGET_IDS) do
+        local param_id = TARGET_IDS[row]
+        local level = grid_row_level(param_id)
+        if level > 0 then
+            local value = target_numeric_value(param_id)
+            local column = grid_column_for_value(value)
+            grid_device:led(column, row, level)
+        end
+    end
+
+    grid_device:refresh()
 end
 
 local function target_mapping(param_id)
@@ -520,7 +634,7 @@ end
 local function draw_targets_page()
     local selection = ui.selection[PAGE_TARGETS]
     local start_index = util.clamp(selection - 1, 1, math.max(#TARGET_IDS - 3, 1))
-    local stop_index = math.min(start_index + 2, #TARGET_IDS)
+    local stop_index = math.min(start_index + 3, #TARGET_IDS)
     local y = 26
 
     screen.level(10)
@@ -587,6 +701,7 @@ function redraw()
 
     draw_message()
     screen.update()
+    redraw_grid()
 end
 
 local function set_device(device_id)
@@ -708,6 +823,25 @@ function init()
     end)
     midididi.set_device(ui.selected_device)
 
+    grid_device = connect_grid_device()
+    if grid_device ~= nil then
+        grid_device.key = function(x, y, z)
+            if z == 0 then
+                return
+            end
+
+            if y >= 1 and y <= #TARGET_IDS then
+                ui.page = PAGE_TARGETS
+                ui.selection[PAGE_TARGETS] = y
+                show_message(string.format("target %d", y))
+            end
+        end
+
+        if using_midigrid then
+            show_message("midigrid")
+        end
+    end
+
     start_redraw_timer()
     mark_dirty()
 end
@@ -715,6 +849,12 @@ end
 function cleanup()
     save_state()
     stop_redraw_timer()
+    if grid_device ~= nil then
+        grid_device:all(0)
+        grid_device:refresh()
+        grid_device.key = nil
+        grid_device = nil
+    end
     midididi.cleanup()
 end
 
