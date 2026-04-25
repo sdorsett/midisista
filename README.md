@@ -7,7 +7,7 @@ Plain Norns script starter built from the MIDI loop engine in `midididi`.
 - MIDI CC loop capture and playback through `reflection`
 - Plain script `init()` and `cleanup()` instead of a Norns mod wrapper
 - Hybrid UI: params for setup and mapping, screen for live status
-- Eight starter target params that can be MIDI-mapped through Norns
+- Sixteen starter target params that can be MIDI-mapped through Norns
 
 ## Controls
 
@@ -21,7 +21,7 @@ Plain Norns script starter built from the MIDI loop engine in `midididi`.
 
 - `DEVICE`: choose the active MIDI device and whether that device selection is persisted
 - `MONITOR`: view the latest incoming MIDI event and recording state
-- `TARGETS`: view up to eight target rows with per-row status, mapped channel/CC, and live loop values
+- `TARGETS`: view up to sixteen target rows with per-row status, mapped channel/CC, and live loop values
 
 ## Mapping Flow
 
