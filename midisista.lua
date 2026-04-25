@@ -31,6 +31,7 @@ local ui = {
     persist_device = 1,
     next_auto_target = 1,
     target_page = 1,
+    targets_display_page = 1,
     held_target_index = nil,
     held_recording = nil,
     event_to_target_map = {},
@@ -450,6 +451,7 @@ local function clear_target_states()
     ui.event_to_target_map = {}
     ui.next_auto_target = 1
     ui.target_page = 1
+    ui.targets_display_page = 1
     ui.held_target_index = nil
     ui.held_recording = nil
 end
@@ -729,7 +731,7 @@ end
 
 local function draw_targets_page()
     local selection = ui.selection[PAGE_TARGETS]
-    local start_index = ((ui.target_page - 1) * TARGETS_VISIBLE) + 1
+    local start_index = ((ui.targets_display_page - 1) * TARGETS_VISIBLE) + 1
     local stop_index = math.min(start_index + TARGETS_VISIBLE - 1, #TARGET_IDS)
     local y = 26
 
@@ -761,7 +763,8 @@ local function draw_targets_page()
 
     screen.level(10)
     screen.move(2, 61)
-    screen.text(string.format("pg %d/%d", ui.target_page, TARGETS_PAGE_COUNT))
+    local targets_display_pages = math.ceil(#TARGET_IDS / TARGETS_VISIBLE)
+    screen.text(string.format("pg %d/%d", ui.targets_display_page, targets_display_pages))
 end
 
 local function draw_message()
@@ -956,8 +959,8 @@ function init()
                 if z == 1 then
                     ui.page = PAGE_TARGETS
                     ui.selection[PAGE_TARGETS] = target_index
-                    -- Navigate to the page containing this target
-                    ui.target_page = math.floor((target_index - 1) / TRACKS_PER_PAGE) + 1
+                    -- Navigate to the page containing this target on TARGETS display (4 per page)
+                    ui.targets_display_page = math.floor((target_index - 1) / TARGETS_VISIBLE) + 1
                     show_message(string.format("sel t%d", target_index))
                     mark_dirty()
                 end
