@@ -48,17 +48,6 @@ local ui = {
         value = nil,
         event_name = "--",
     },
-    last_loop_event = {
-        device_id = nil,
-        channel = nil,
-        event_id = nil,
-        value = nil,
-        event_name = "--",
-    },
-    last_loop_match_count = 0,
-    last_loop_fallback_match = false,
-    last_loop_forced_selected = false,
-    last_loop_matched_target = nil,
     learned_target_mappings = {},
     target_states = {},
 }
@@ -359,7 +348,6 @@ local function refresh_target_loop_state(device_id, channel, event_id, rec_state
     end
 
     local match_count = 0
-    local matched_target_index = nil
 
     for _, param_id in ipairs(TARGET_IDS) do
         local pmap = target_mapping(param_id)
@@ -367,19 +355,9 @@ local function refresh_target_loop_state(device_id, channel, event_id, rec_state
             or target_rev_matches_event(param_id, channel, event_id)
         if matches then
             match_count = match_count + 1
-            if matched_target_index == nil then
-                for index, target_id in ipairs(TARGET_IDS) do
-                    if target_id == param_id then
-                        matched_target_index = index
-                        break
-                    end
-                end
-            end
             apply_state(param_id)
         end
     end
-
-    ui.last_loop_fallback_match = false
 
     -- Fallback: if channel+CC match fails entirely, bind rows by CC so TARGETS can
     -- still reflect loop state when callback channel identity is inconsistent.
@@ -388,29 +366,17 @@ local function refresh_target_loop_state(device_id, channel, event_id, rec_state
             local pmap = target_mapping(param_id)
             if pmap ~= nil and values_match(pmap.cc, event_id) then
                 match_count = match_count + 1
-                if matched_target_index == nil then
-                    for index, target_id in ipairs(TARGET_IDS) do
-                        if target_id == param_id then
-                            matched_target_index = index
-                            break
-                        end
-                    end
-                end
                 apply_state(param_id)
-                ui.last_loop_fallback_match = true
             end
         end
     end
 
-    -- Last-resort debug fallback: bind the active callback to the currently selected
-    -- TARGET row so we can verify row state/value rendering even if mapping fails.
-    ui.last_loop_forced_selected = false
+    -- Last-resort fallback: bind the active callback to the currently selected
+    -- TARGET row and learn its mapping if normal matching fails.
     if match_count == 0 and ui.page == PAGE_TARGETS then
         local selected_param_id = selected_target_id()
         apply_state(selected_param_id)
         match_count = 1
-        ui.last_loop_forced_selected = true
-        matched_target_index = ui.selection[PAGE_TARGETS]
 
         -- Auto-learn mapping for the selected row from live callback data.
         ui.learned_target_mappings[selected_param_id] = {
@@ -419,9 +385,6 @@ local function refresh_target_loop_state(device_id, channel, event_id, rec_state
             cc = event_id,
         }
     end
-
-    ui.last_loop_match_count = match_count
-    ui.last_loop_matched_target = matched_target_index
 end
 
 local function target_status_text(param_id)
@@ -441,60 +404,6 @@ local function target_channel_cc_text(param_id)
         return "--/--"
     end
     return string.format("%d/%d", pmap.ch, pmap.cc)
-end
-
-local function target_debug_line_1()
-    local event = ui.last_loop_event
-    local device_id = event.device_id ~= nil and tostring(event.device_id) or "--"
-    local channel = event.channel ~= nil and tostring(event.channel) or "--"
-    local event_id = event.event_id ~= nil and tostring(event.event_id) or "--"
-
-    return string.format("cb %s %s/%s", device_id, channel, event_id)
-end
-
-local function target_debug_line_2()
-    local event = ui.last_loop_event
-    local value = event.value ~= nil and tostring(event.value) or "--"
-    local event_name = event.event_name or "--"
-
-    return string.format("%s %s", event_name, value)
-end
-
-local function target_selected_debug_text()
-    local param_id = selected_target_id()
-    local pmap = target_mapping(param_id)
-    local state = ui.target_states[param_id] or {}
-    local matches = target_mapping_matches_event(
-        param_id,
-        pmap,
-        ui.last_loop_event.device_id,
-        ui.last_loop_event.channel,
-        ui.last_loop_event.event_id
-    )
-
-    local rec_state = state.rec_state ~= nil and tostring(state.rec_state) or "-"
-    local play_state = state.play_state ~= nil and tostring(state.play_state) or "-"
-    local match_count = ui.last_loop_match_count or 0
-    local fallback = ui.last_loop_fallback_match and "y" or "n"
-    local forced = ui.last_loop_forced_selected and "y" or "n"
-    local matched_target = ui.last_loop_matched_target ~= nil and tostring(ui.last_loop_matched_target) or "-"
-    local mapped = target_assigned_mapping(param_id)
-    local mapped_channel = (mapped ~= nil and mapped.ch ~= nil) and tostring(math.floor(tonumber(mapped.ch) + 0.5)) or "--"
-    local mapped_cc = (mapped ~= nil and mapped.cc ~= nil) and tostring(math.floor(tonumber(mapped.cc) + 0.5)) or "--"
-
-    return string.format(
-        "s%d %s/%s m%s r%s p%s h%d f%s g%s t%s",
-        ui.selection[PAGE_TARGETS],
-        mapped_channel,
-        mapped_cc,
-        matches and "y" or "n",
-        rec_state,
-        play_state,
-        match_count,
-        fallback,
-        forced,
-        matched_target
-    )
 end
 
 local function ensure_target_pmaps()
@@ -632,10 +541,8 @@ local function draw_targets_page()
     end
 
     screen.level(10)
-    screen.move(2, 54)
-    screen.text(target_selected_debug_text())
     screen.move(2, 61)
-    screen.text(target_debug_line_1() .. " " .. target_debug_line_2())
+    screen.text(selected_target_id())
 end
 
 local function draw_message()
@@ -769,11 +676,6 @@ function init()
         mark_dirty()
     end)
     midididi.on_loop_state_change(function(device_id, channel, event_id, rec_state, play_state, value, event_name)
-        ui.last_loop_event.device_id = device_id
-        ui.last_loop_event.channel = channel
-        ui.last_loop_event.event_id = event_id
-        ui.last_loop_event.value = value
-        ui.last_loop_event.event_name = event_name or "--"
         refresh_target_loop_state(device_id, channel, event_id, rec_state, play_state, value, event_name)
         if ui.midi_info.device_id == device_id and ui.midi_info.channel == channel and ui.midi_info.event_id == event_id then
             ui.midi_info.play_state = play_state or 0
