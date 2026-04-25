@@ -956,6 +956,8 @@ function init()
                 if z == 1 then
                     ui.page = PAGE_TARGETS
                     ui.selection[PAGE_TARGETS] = target_index
+                    -- Navigate to the page containing this target
+                    ui.target_page = math.floor((target_index - 1) / TRACKS_PER_PAGE) + 1
                     show_message(string.format("sel t%d", target_index))
                     mark_dirty()
                 end
