@@ -8,6 +8,8 @@ Plain Norns script starter built from the MIDI loop engine in `midididi`.
 - Plain script `init()` and `cleanup()` instead of a Norns mod wrapper
 - Hybrid UI: params for setup and mapping, screen for live status
 - Sixteen starter target params that can be MIDI-mapped through Norns
+- Grid visualization for 16 tracks split across 2 pages (8 tracks per page)
+- Optional midigrid support for MIDI-grid devices
 
 ## Controls
 
@@ -34,12 +36,31 @@ Plain Norns script starter built from the MIDI loop engine in `midididi`.
 
 ## TARGETS Behavior
 
-- Each target row represents one visible loop slot.
+- Each target row represents one visible loop slot (16 total, shown 4 per screen view).
 - `st` shows `rec` while a loop is recording and `ply` while it is playing back.
 - `ch/cc` shows the mapped MIDI channel and CC number for that row.
 - `val` shows the most recent live CC value for that row during record or playback.
 - When a new loop is recorded, the next available target row is used for that loop's displayed mapping and value.
 - TARGET row matching is learned from live callback data so displayed rows stay aligned with working loop playback.
+
+## Grid Behavior
+
+- Press any key in **column 16** (rightmost column) to cycle between pages.
+- Page 1 displays targets 1-8; page 2 displays targets 9-16.
+- Column 16 shows a dim page indicator: the current page row lights brighter than the other.
+- On each page, each row maps to one target track (rows 1-8 on grid).
+- Each row lights one LED in columns 1-15 based on the current CC value (`0..127` mapped to `1..16`).
+- Brighter LEDs indicate active recording (`rec=15`) and medium LEDs indicate playback (`ply=10`).
+- Dimmer LEDs indicate stored values on idle loops (`stored=6`).
+- Pressing any grid key in a row (columns 1-15) selects that target row on the norns TARGETS page.
+
+## Midigrid Support
+
+- If a native monome grid is connected on norns `GRID` port 1, the script uses it.
+- If no native grid is detected, the script tries to load midigrid automatically.
+- Preferred include order is `midigrid/lib/midigrid_2pages` (16x8 emulation), then `midigrid/lib/midigrid`.
+- Install midigrid in your dust scripts folder so includes resolve at runtime.
+- If using midigrid with a script that also expects MIDI input, set your MIDI device to a slot other than 1 (per midigrid notes).
 
 ## Clock Behavior
 
