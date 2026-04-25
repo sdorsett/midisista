@@ -39,6 +39,7 @@ local ui = {
     message_until = 0,
     selected_device = 1,
     persist_device = 1,
+    next_auto_target = 1,
     midi_info = {
         rec_state = 0,
         play_state = 0,
@@ -315,6 +316,25 @@ end
 local function clear_target_states()
     ui.target_states = {}
     ui.learned_target_mappings = {}
+    ui.next_auto_target = 1
+end
+
+local function next_available_target()
+    local total = #TARGET_IDS
+    if total == 0 then
+        return nil, nil
+    end
+
+    for offset = 0, total - 1 do
+        local index = ((ui.next_auto_target - 1 + offset) % total) + 1
+        local param_id = TARGET_IDS[index]
+        if target_assigned_mapping(param_id) == nil then
+            return param_id, index
+        end
+    end
+
+    local fallback_index = ui.next_auto_target
+    return TARGET_IDS[fallback_index], fallback_index
 end
 
 local function refresh_target_loop_state(device_id, channel, event_id, rec_state, play_state, value, event_name)
@@ -359,31 +379,20 @@ local function refresh_target_loop_state(device_id, channel, event_id, rec_state
         end
     end
 
-    -- Fallback: if channel+CC match fails entirely, bind rows by CC so TARGETS can
-    -- still reflect loop state when callback channel identity is inconsistent.
+    -- If no exact mapping exists yet for this channel/CC, allocate the next
+    -- available target row and learn the mapping for subsequent callbacks.
     if match_count == 0 then
-        for _, param_id in ipairs(TARGET_IDS) do
-            local pmap = target_mapping(param_id)
-            if pmap ~= nil and values_match(pmap.cc, event_id) then
-                match_count = match_count + 1
-                apply_state(param_id)
-            end
+        local param_id, index = next_available_target()
+        if param_id ~= nil then
+            ui.learned_target_mappings[param_id] = {
+                dev = device_id,
+                ch = channel,
+                cc = event_id,
+            }
+            apply_state(param_id)
+            match_count = 1
+            ui.next_auto_target = (index % #TARGET_IDS) + 1
         end
-    end
-
-    -- Last-resort fallback: bind the active callback to the currently selected
-    -- TARGET row and learn its mapping if normal matching fails.
-    if match_count == 0 and ui.page == PAGE_TARGETS then
-        local selected_param_id = selected_target_id()
-        apply_state(selected_param_id)
-        match_count = 1
-
-        -- Auto-learn mapping for the selected row from live callback data.
-        ui.learned_target_mappings[selected_param_id] = {
-            dev = device_id,
-            ch = channel,
-            cc = event_id,
-        }
     end
 end
 
