@@ -256,7 +256,8 @@ local function refresh_target_loop_state(device_id, channel, event_id, rec_state
         return
     end
 
-    for param_id, pmap in pairs(norns.pmap.data) do
+    for _, param_id in ipairs(TARGET_IDS) do
+        local pmap = target_mapping(param_id)
         if target_mapping_matches_event(pmap, device_id, channel, event_id) then
             local previous_state = ui.target_states[param_id] or {}
             local next_value = previous_state.value
