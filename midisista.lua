@@ -272,7 +272,7 @@ local function redraw_grid()
                     grid_device:led(left_col, row, level)
                 else
                     -- Sharper than linear crossfade: nearest column stays dominant longer.
-                    local sharpness = 2.2
+                    local sharpness = 3.0
                     local left_weight = math.pow(1 - frac, sharpness)
                     local right_weight = math.pow(frac, sharpness)
                     local weight_total = left_weight + right_weight
