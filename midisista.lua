@@ -157,6 +157,32 @@ local function target_mapping(param_id)
     return norns.pmap.data[param_id]
 end
 
+local function target_mapping_from_rev(param_id)
+    if norns.pmap == nil or norns.pmap.rev == nil then
+        return nil
+    end
+
+    for dev, by_channel in pairs(norns.pmap.rev) do
+        if by_channel ~= nil then
+            for ch, by_cc in pairs(by_channel) do
+                if by_cc ~= nil then
+                    for cc, mapped_param_id in pairs(by_cc) do
+                        if mapped_param_id == param_id then
+                            return {
+                                dev = dev,
+                                ch = ch,
+                                cc = cc,
+                            }
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    return nil
+end
+
 local function values_match(left, right)
     if left == nil or right == nil then
         return false
@@ -235,6 +261,11 @@ local function target_has_assigned_mapping(param_id, pmap)
 end
 
 local function target_assigned_mapping(param_id)
+    local rev_mapping = target_mapping_from_rev(param_id)
+    if rev_mapping ~= nil then
+        return rev_mapping
+    end
+
     local pmap = target_mapping(param_id)
     if target_has_assigned_mapping(param_id, pmap) then
         return pmap
@@ -242,12 +273,13 @@ local function target_assigned_mapping(param_id)
     return nil
 end
 
-local function target_mapping_matches_event(pmap, device_id, channel, event_id)
-    if pmap == nil then
+local function target_mapping_matches_event(param_id, pmap, device_id, channel, event_id)
+    local mapping = target_mapping_from_rev(param_id) or pmap
+    if mapping == nil then
         return false
     end
 
-    if not values_match(pmap.ch, channel) or not values_match(pmap.cc, event_id) then
+    if not values_match(mapping.ch, channel) or not values_match(mapping.cc, event_id) then
         return false
     end
 
@@ -309,7 +341,7 @@ local function refresh_target_loop_state(device_id, channel, event_id, rec_state
 
     for _, param_id in ipairs(TARGET_IDS) do
         local pmap = target_mapping(param_id)
-        local matches = target_mapping_matches_event(pmap, device_id, channel, event_id)
+        local matches = target_mapping_matches_event(param_id, pmap, device_id, channel, event_id)
             or target_rev_matches_event(param_id, channel, event_id)
         if matches then
             match_count = match_count + 1
@@ -385,6 +417,7 @@ local function target_selected_debug_text()
     local pmap = target_mapping(param_id)
     local state = ui.target_states[param_id] or {}
     local matches = target_mapping_matches_event(
+        param_id,
         pmap,
         ui.last_loop_event.device_id,
         ui.last_loop_event.channel,
@@ -396,8 +429,9 @@ local function target_selected_debug_text()
     local match_count = ui.last_loop_match_count or 0
     local fallback = ui.last_loop_fallback_match and "y" or "n"
     local forced = ui.last_loop_forced_selected and "y" or "n"
-    local mapped_channel = (pmap ~= nil and pmap.ch ~= nil) and tostring(math.floor(tonumber(pmap.ch) + 0.5)) or "--"
-    local mapped_cc = (pmap ~= nil and pmap.cc ~= nil) and tostring(math.floor(tonumber(pmap.cc) + 0.5)) or "--"
+    local mapped = target_assigned_mapping(param_id)
+    local mapped_channel = (mapped ~= nil and mapped.ch ~= nil) and tostring(math.floor(tonumber(mapped.ch) + 0.5)) or "--"
+    local mapped_cc = (mapped ~= nil and mapped.cc ~= nil) and tostring(math.floor(tonumber(mapped.cc) + 0.5)) or "--"
 
     return string.format(
         "sel%d %s/%s m:%s r:%s p:%s h:%d f:%s g:%s",
