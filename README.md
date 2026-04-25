@@ -21,7 +21,7 @@ Plain Norns script starter built from the MIDI loop engine in `midididi`.
 
 - `DEVICE`: choose the active MIDI device and whether that device selection is persisted
 - `MONITOR`: view the latest incoming MIDI event and recording state
-- `TARGETS`: tweak the starter target params and see which mapped target is recording
+- `TARGETS`: view up to eight target rows with per-row status, mapped channel/CC, and live loop values
 
 ## Mapping Flow
 
@@ -30,6 +30,16 @@ Plain Norns script starter built from the MIDI loop engine in `midididi`.
 3. Open `PARAMS` and map one or more `midisista target` params to MIDI CC.
 4. Send note on/off plus CC on the same device, channel, and CC id.
 5. Recorded CC playback is sent back out to the selected MIDI device.
+6. As loops are recorded, TARGET rows learn and display the active loop's mapped channel/CC and current value.
+
+## TARGETS Behavior
+
+- Each target row represents one visible loop slot.
+- `st` shows `rec` while a loop is recording and `ply` while it is playing back.
+- `ch/cc` shows the mapped MIDI channel and CC number for that row.
+- `val` shows the most recent live CC value for that row during record or playback.
+- When a new loop is recorded, the next available target row is used for that loop's displayed mapping and value.
+- TARGET row matching is learned from live callback data so displayed rows stay aligned with working loop playback.
 
 ## Clock Behavior
 
@@ -41,5 +51,7 @@ Plain Norns script starter built from the MIDI loop engine in `midididi`.
 ## Notes
 
 - This starter keeps the current engine behavior from `midididi`: single device, absolute CC values, and note/CC id matching.
+- Same-device MIDI capture and playback are supported.
+- Multiple CC loops can run at the same time when they use different mapped targets.
 - The script does not parse MIDI clock transport messages such as clock, start, continue, or stop.
 - The script UI is intentionally small so it can be expanded without reworking the engine integration.
