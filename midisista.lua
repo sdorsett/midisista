@@ -3,24 +3,14 @@ local midididi = include("midisista/lib/midididi")
 local DATA_DIR = _path.data .. "midisista/"
 local STATE_FILE = DATA_DIR .. "state.data"
 
-local TARGET_IDS = {
-    "midisista_target_1",
-    "midisista_target_2",
-    "midisista_target_3",
-    "midisista_target_4",
-    "midisista_target_5",
-    "midisista_target_6",
-    "midisista_target_7",
-    "midisista_target_8",
-    "midisista_target_9",
-    "midisista_target_10",
-    "midisista_target_11",
-    "midisista_target_12",
-    "midisista_target_13",
-    "midisista_target_14",
-    "midisista_target_15",
-    "midisista_target_16",
-}
+local TARGET_IDS = {}
+for i = 1, 32 do
+    TARGET_IDS[i] = "midisista_target_" .. i
+end
+
+local TARGETS_PAGE_COUNT = 4
+local TARGETS_VISIBLE = 4
+local TRACKS_PER_PAGE = 8
 
 local PAGE_DEVICE = 1
 local PAGE_MONITOR = 2
@@ -40,7 +30,11 @@ local ui = {
     selected_device = 1,
     persist_device = 1,
     next_auto_target = 1,
-    grid_page = 1,
+    target_page = 1,
+    targets_display_page = 1,
+    held_target_index = nil,
+    held_recording = nil,
+    event_to_target_map = {},
     midi_info = {
         rec_state = 0,
         play_state = 0,
@@ -259,31 +253,55 @@ local function redraw_grid()
 
     grid_device:all(0)
 
-    -- Render 8 targets for current page
-    local page_offset = (ui.grid_page - 1) * 8
-    for row = 1, 8 do
+    -- Render 8 targets for current grid page
+    local page_offset = (ui.target_page - 1) * TRACKS_PER_PAGE
+    for row = 1, TRACKS_PER_PAGE do
         local target_index = page_offset + row
         if target_index <= #TARGET_IDS then
             local param_id = TARGET_IDS[target_index]
             local level = grid_row_level(param_id)
             if level > 0 then
                 local value = target_numeric_value(param_id)
-                local column = grid_column_for_value(value)
-                grid_device:led(column, row, level)
+                -- Blend neighboring columns for smoother perceived motion as values change.
+                local position = ((value / 127) * 14) + 1
+                local left_col = util.clamp(math.floor(position), 1, 15)
+                local right_col = util.clamp(left_col + 1, 1, 15)
+                local frac = util.clamp(position - left_col, 0, 1)
+
+                if right_col == left_col then
+                    grid_device:led(left_col, row, level)
+                else
+                    -- Sharper than linear crossfade: nearest column stays dominant longer.
+                    local sharpness = 2.2
+                    local left_weight = math.pow(1 - frac, sharpness)
+                    local right_weight = math.pow(frac, sharpness)
+                    local weight_total = left_weight + right_weight
+                    local left_level = 0
+                    local right_level = 0
+                    if weight_total > 0 then
+                        left_level = util.clamp(math.floor(((left_weight / weight_total) * level) + 0.5), 0, 15)
+                        right_level = util.clamp(math.floor(((right_weight / weight_total) * level) + 0.5), 0, 15)
+                    end
+
+                    if left_level > 0 then
+                        grid_device:led(left_col, row, left_level)
+                    end
+                    if right_level > 0 then
+                        grid_device:led(right_col, row, right_level)
+                    end
+                end
             end
         end
     end
 
-    -- Page indicator: prefer column 16 for combined 8x8 midigrid setups.
-    -- Fallback to reported last column only when width is narrower than 16.
+    -- Page indicator: rightmost column shows which of 4 grid pages is active
     local grid_cols = grid_device.cols or 16
     local page_switch_col = 16
     if grid_cols < 16 then
         page_switch_col = grid_cols
     end
-    local max_pages = math.ceil(#TARGET_IDS / 8)
-    for p = 1, max_pages do
-        grid_device:led(page_switch_col, p, p == ui.grid_page and 8 or 2)
+    for p = 1, TARGETS_PAGE_COUNT do
+        grid_device:led(page_switch_col, p, p == ui.target_page and 8 or 2)
     end
 
     grid_device:refresh()
@@ -456,12 +474,75 @@ end
 local function clear_target_states()
     ui.target_states = {}
     ui.learned_target_mappings = {}
+    ui.event_to_target_map = {}
     ui.next_auto_target = 1
+    ui.target_page = 1
+    ui.targets_display_page = 1
+    ui.held_target_index = nil
+    ui.held_recording = nil
 end
 
-local function next_available_target()
+local function event_lookup_key(device_id, channel, event_id)
+    return string.format("%d:%d:%d", device_id or -1, channel or -1, event_id or -1)
+end
+
+local function register_event_to_target(device_id, channel, event_id, param_id)
+    if param_id == nil then return end
+    local key = event_lookup_key(device_id, channel, event_id)
+    ui.event_to_target_map[key] = param_id
+end
+
+local function lookup_target_for_event(device_id, channel, event_id)
+    local key = event_lookup_key(device_id, channel, event_id)
+    return ui.event_to_target_map[key]
+end
+
+local function cycle_target_page()
+    ui.target_page = ui.target_page % TARGETS_PAGE_COUNT + 1
+end
+
+local function target_channel_cc_for_index(target_index)
+    local param_id = TARGET_IDS[target_index]
+    if param_id == nil then
+        return nil, nil
+    end
+
+    local pmap = target_assigned_mapping(param_id)
+    if pmap ~= nil and pmap.ch ~= nil and pmap.cc ~= nil then
+        local ch = tonumber(pmap.ch)
+        local cc = tonumber(pmap.cc)
+        if ch ~= nil and cc ~= nil then
+            return ch, cc
+        end
+    end
+
+    local info_ch = tonumber(ui.midi_info.channel)
+    local info_cc = tonumber(ui.midi_info.event_id)
+    if info_ch ~= nil and info_cc ~= nil then
+        return info_ch, info_cc
+    end
+
+    return nil, nil
+end
+
+local function next_available_target(preferred_page)
     local total = #TARGET_IDS
     if total == 0 then
+        return nil, nil
+    end
+
+    if preferred_page ~= nil then
+        local page = util.clamp(preferred_page, 1, TARGETS_PAGE_COUNT)
+        local page_start = ((page - 1) * TRACKS_PER_PAGE) + 1
+        local page_stop = math.min(page_start + TRACKS_PER_PAGE - 1, total)
+
+        for index = page_start, page_stop do
+            local param_id = TARGET_IDS[index]
+            if target_assigned_mapping(param_id) == nil then
+                return param_id, index
+            end
+        end
+
         return nil, nil
     end
 
@@ -507,8 +588,15 @@ local function refresh_target_loop_state(device_id, channel, event_id, rec_state
         }
     end
 
-    local match_count = 0
+    -- Fast path: direct event lookup first (learned mappings)
+    local fast_param_id = lookup_target_for_event(device_id, channel, event_id)
+    if fast_param_id ~= nil then
+        apply_state(fast_param_id)
+        return
+    end
 
+    -- Fallback: check parameter mappings and learn for future callbacks
+    local match_count = 0
     for _, param_id in ipairs(TARGET_IDS) do
         local pmap = target_mapping(param_id)
         local matches = target_mapping_matches_event(param_id, pmap, device_id, channel, event_id)
@@ -516,13 +604,23 @@ local function refresh_target_loop_state(device_id, channel, event_id, rec_state
         if matches then
             match_count = match_count + 1
             apply_state(param_id)
+            register_event_to_target(device_id, channel, event_id, param_id)
+            return
         end
     end
 
-    -- If no exact mapping exists yet for this channel/CC, allocate the next
-    -- available target row and learn the mapping for subsequent callbacks.
-    if match_count == 0 then
-        local param_id, index = next_available_target()
+    -- If no exact mapping exists yet, allocate on the currently selected page
+    if true then
+        local param_id = nil
+        local index = nil
+
+        if ui.held_target_index ~= nil then
+            index = util.clamp(ui.held_target_index, 1, #TARGET_IDS)
+            param_id = TARGET_IDS[index]
+        else
+            param_id, index = next_available_target(ui.target_page)
+        end
+
         if param_id ~= nil then
             ui.learned_target_mappings[param_id] = {
                 dev = device_id,
@@ -659,8 +757,8 @@ end
 
 local function draw_targets_page()
     local selection = ui.selection[PAGE_TARGETS]
-    local start_index = util.clamp(selection - 1, 1, math.max(#TARGET_IDS - 3, 1))
-    local stop_index = math.min(start_index + 3, #TARGET_IDS)
+    local start_index = ((ui.targets_display_page - 1) * TARGETS_VISIBLE) + 1
+    local stop_index = math.min(start_index + TARGETS_VISIBLE - 1, #TARGET_IDS)
     local y = 26
 
     screen.level(10)
@@ -679,7 +777,7 @@ local function draw_targets_page()
 
         screen.level(active and 15 or 4)
         screen.move(2, y)
-        screen.text(string.format("%s%d", active and ">" or " ", index))
+        screen.text(string.format("%s%02d", active and ">" or " ", index))
         screen.move(24, y)
         screen.text(target_status_text(param_id))
         screen.move(48, y)
@@ -691,7 +789,8 @@ local function draw_targets_page()
 
     screen.level(10)
     screen.move(2, 61)
-    screen.text(selected_target_id())
+    local targets_display_pages = math.ceil(#TARGET_IDS / TARGETS_VISIBLE)
+    screen.text(string.format("pg %d/%d", ui.targets_display_page, targets_display_pages))
 end
 
 local function draw_message()
@@ -852,10 +951,6 @@ function init()
     grid_device = connect_grid_device()
     if grid_device ~= nil then
         grid_device.key = function(x, y, z)
-            if z == 0 then
-                return
-            end
-
             -- Prefer column 16 for page switching on 16-column layouts.
             -- If the backend reports fewer columns, use its rightmost column.
             local grid_cols = grid_device.cols or 16
@@ -865,21 +960,76 @@ function init()
             end
 
             if x == page_switch_col then
-                local max_pages = math.ceil(#TARGET_IDS / 8)
-                ui.grid_page = (ui.grid_page % max_pages) + 1
-                show_message(string.format("grid page %d", ui.grid_page))
-                mark_dirty()
+                if z == 0 then
+                    return
+                end
+                if y >= 1 and y <= TARGETS_PAGE_COUNT then
+                    ui.target_page = y
+                    show_message(string.format("grid page %d", ui.target_page))
+                    mark_dirty()
+                end
                 return
             end
 
             -- Any other column: select the track for that row
-            local row = (y >= 1 and y <= 8) and y or 1
-            local page_offset = (ui.grid_page - 1) * 8
+            local row = (y >= 1 and y <= TRACKS_PER_PAGE) and y or 1
+            local page_offset = (ui.target_page - 1) * TRACKS_PER_PAGE
             local target_index = page_offset + row
-            if target_index >= 1 and target_index <= #TARGET_IDS then
+
+            if target_index < 1 or target_index > #TARGET_IDS then
+                return
+            end
+
+            -- Column 1 is a safe select lane: focus target without starting/stopping recording.
+            if x == 1 then
+                if z == 1 then
+                    ui.page = PAGE_TARGETS
+                    ui.selection[PAGE_TARGETS] = target_index
+                    -- Navigate to the page containing this target on TARGETS display (4 per page)
+                    ui.targets_display_page = math.floor((target_index - 1) / TARGETS_VISIBLE) + 1
+                    mark_dirty()
+                end
+                return
+            end
+
+            if z == 1 then
                 ui.page = PAGE_TARGETS
                 ui.selection[PAGE_TARGETS] = target_index
-                show_message(string.format("target %d", target_index))
+                ui.held_target_index = target_index
+
+                local ch, cc = target_channel_cc_for_index(target_index)
+                if ch ~= nil and cc ~= nil and midididi.start_recording ~= nil and midididi.start_recording(ch, cc) then
+                    local param_id = TARGET_IDS[target_index]
+                    ui.learned_target_mappings[param_id] = {
+                        dev = ui.selected_device,
+                        ch = ch,
+                        cc = cc,
+                    }
+                    ui.held_recording = {
+                        target_index = target_index,
+                        ch = ch,
+                        cc = cc,
+                    }
+                    show_message(string.format("rec t%d", target_index))
+                else
+                    ui.held_recording = nil
+                    show_message(string.format("hold t%d", target_index))
+                end
+                mark_dirty()
+            elseif z == 0 then
+                if ui.held_recording ~= nil and ui.held_recording.target_index == target_index then
+                    if midididi.stop_recording ~= nil then
+                        midididi.stop_recording(ui.held_recording.ch, ui.held_recording.cc)
+                    end
+                    show_message(string.format("stop t%d", target_index))
+                end
+
+                if ui.held_target_index == target_index then
+                    ui.held_target_index = nil
+                end
+
+                ui.held_recording = nil
+                mark_dirty()
             end
         end
 
@@ -915,7 +1065,7 @@ function enc(n, d)
         if ui.page == PAGE_DEVICE then
             ui.selection[PAGE_DEVICE] = util.clamp(ui.selection[PAGE_DEVICE] + encoder_delta(d), 1, 2)
         elseif ui.page == PAGE_TARGETS then
-            ui.selection[PAGE_TARGETS] = util.clamp(ui.selection[PAGE_TARGETS] + encoder_delta(d), 1, #TARGET_IDS)
+            ui.selection[PAGE_TARGETS] = util.clamp(ui.selection[PAGE_TARGETS] + encoder_delta(d), 1, TARGETS_VISIBLE)
         end
         mark_dirty()
         return
@@ -941,7 +1091,11 @@ function key(n, z)
         ui.page = PAGE_MONITOR
         show_message("monitor")
     elseif n == 3 then
-        ui.page = PAGE_TARGETS
+        if ui.page == PAGE_TARGETS then
+            cycle_target_page()
+        else
+            ui.page = PAGE_TARGETS
+        end
         show_message("targets")
     end
 end

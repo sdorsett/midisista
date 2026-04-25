@@ -315,6 +315,38 @@ local function get_device_rec_state(device_id)
     return 0
 end
 
+local function start_pattern_recording(pattern)
+    if pattern == nil or pattern.loop == nil then
+        return
+    end
+
+    stop_pattern_playback(pattern, false)
+    pattern.loop:stop()
+    pattern.loop:clear()
+    pattern.record_started_at = util.time()
+    pattern.recorded_events = {}
+    pattern.loop_length = 0
+    pattern.loop:set_rec(1)
+end
+
+local function stop_pattern_recording(pattern)
+    if pattern == nil or pattern.loop == nil or normalize_rec_state(pattern.loop.rec) ~= 1 then
+        return
+    end
+
+    pattern.loop:set_rec(0)
+    pattern.loop_length = math.max(
+        util.time() - (pattern.record_started_at or util.time()),
+        (#pattern.recorded_events > 0 and pattern.recorded_events[#pattern.recorded_events].time or 0)
+    )
+    start_pattern_playback(pattern)
+    pattern.tolerance_time_passed = false
+    clock.run(function()
+        clock.sleep(TOLERANCE_TIME_MS / 1000)
+        pattern.tolerance_time_passed = true
+    end)
+end
+
 local function on_midi_event(device_id, midi_msg)
     if device_id ~= enabled_device_id then
         norns_midi_event(device_id, midi_msg)
@@ -337,25 +369,9 @@ local function on_midi_event(device_id, midi_msg)
 
     if event == "note_on" then
         if normalize_rec_state(pattern.loop.rec) == 1 then
-            pattern.loop:set_rec(0)
-            pattern.loop_length = math.max(
-                util.time() - (pattern.record_started_at or util.time()),
-                (#pattern.recorded_events > 0 and pattern.recorded_events[#pattern.recorded_events].time or 0)
-            )
-            start_pattern_playback(pattern)
-            pattern.tolerance_time_passed = false
-            clock.run(function()
-                clock.sleep(TOLERANCE_TIME_MS / 1000)
-                pattern.tolerance_time_passed = true
-            end)
+            stop_pattern_recording(pattern)
         else
-            stop_pattern_playback(pattern, false)
-            pattern.loop:stop()
-            pattern.loop:clear()
-            pattern.record_started_at = util.time()
-            pattern.recorded_events = {}
-            pattern.loop_length = 0
-            pattern.loop:set_rec(1)
+            start_pattern_recording(pattern)
         end
         notify_midi_info(device_id, channel, event_id, get_device_rec_state(device_id), value, event)
         emit_pattern_state(pattern, value, event)
@@ -393,6 +409,41 @@ local function on_midi_event(device_id, midi_msg)
     end
 
     norns_midi_event(device_id, midi_msg)
+end
+
+function Midididi.start_recording(channel, event_id)
+    if enabled_device_id == nil or channel == nil or event_id == nil then
+        return false
+    end
+
+    local pattern = get_pattern(enabled_device_id, channel, event_id)
+    if pattern == nil then
+        pattern = create_pattern(enabled_device_id, channel, event_id)
+    end
+
+    if normalize_rec_state(pattern.loop.rec) ~= 1 then
+        start_pattern_recording(pattern)
+    end
+
+    notify_midi_info(enabled_device_id, channel, event_id, get_device_rec_state(enabled_device_id), pattern.last_value, "grid_rec_start")
+    emit_pattern_state(pattern, pattern.last_value, "grid_rec_start")
+    return true
+end
+
+function Midididi.stop_recording(channel, event_id)
+    if enabled_device_id == nil or channel == nil or event_id == nil then
+        return false
+    end
+
+    local pattern = get_pattern(enabled_device_id, channel, event_id)
+    if pattern == nil then
+        return false
+    end
+
+    stop_pattern_recording(pattern)
+    notify_midi_info(enabled_device_id, channel, event_id, get_device_rec_state(enabled_device_id), pattern.last_value, "grid_rec_stop")
+    emit_pattern_state(pattern, pattern.last_value, "grid_rec_stop")
+    return true
 end
 
 function Midididi.init()
