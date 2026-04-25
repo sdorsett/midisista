@@ -321,6 +321,23 @@ local function target_debug_line_2()
     return string.format("%s %s", event_name, value)
 end
 
+local function target_selected_debug_text()
+    local param_id = selected_target_id()
+    local pmap = target_mapping(param_id)
+    local state = ui.target_states[param_id] or {}
+    local matches = target_mapping_matches_event(
+        pmap,
+        ui.last_loop_event.device_id,
+        ui.last_loop_event.channel,
+        ui.last_loop_event.event_id
+    )
+
+    local rec_state = state.rec_state ~= nil and tostring(state.rec_state) or "-"
+    local play_state = state.play_state ~= nil and tostring(state.play_state) or "-"
+
+    return string.format("sel %d m:%s r:%s p:%s", ui.selection[PAGE_TARGETS], matches and "y" or "n", rec_state, play_state)
+end
+
 local function ensure_target_pmaps()
     if norns.pmap == nil or norns.pmap.data == nil or norns.pmap.new == nil then
         return
@@ -457,7 +474,7 @@ local function draw_targets_page()
 
     screen.level(10)
     screen.move(2, 54)
-    screen.text(selected_target_id())
+    screen.text(target_selected_debug_text())
     screen.move(126, 54)
     screen.text_right(target_debug_line_1())
     screen.move(126, 61)
