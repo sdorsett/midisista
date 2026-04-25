@@ -168,8 +168,12 @@ local function values_match(left, right)
 
     local left_num = tonumber(left)
     local right_num = tonumber(right)
-    if left_num ~= nil and right_num ~= nil and left_num == right_num then
-        return true
+    if left_num ~= nil and right_num ~= nil then
+        local left_midi = math.floor(left_num + 0.5)
+        local right_midi = math.floor(right_num + 0.5)
+        if left_midi == right_midi then
+            return true
+        end
     end
 
     return tostring(left) == tostring(right)
@@ -392,10 +396,14 @@ local function target_selected_debug_text()
     local match_count = ui.last_loop_match_count or 0
     local fallback = ui.last_loop_fallback_match and "y" or "n"
     local forced = ui.last_loop_forced_selected and "y" or "n"
+    local mapped_channel = (pmap ~= nil and pmap.ch ~= nil) and tostring(math.floor(tonumber(pmap.ch) + 0.5)) or "--"
+    local mapped_cc = (pmap ~= nil and pmap.cc ~= nil) and tostring(math.floor(tonumber(pmap.cc) + 0.5)) or "--"
 
     return string.format(
-        "sel%d m:%s r:%s p:%s h:%d f:%s g:%s",
+        "sel%d %s/%s m:%s r:%s p:%s h:%d f:%s g:%s",
         ui.selection[PAGE_TARGETS],
+        mapped_channel,
+        mapped_cc,
         matches and "y" or "n",
         rec_state,
         play_state,
