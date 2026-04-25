@@ -1003,7 +1003,7 @@ function enc(n, d)
         if ui.page == PAGE_DEVICE then
             ui.selection[PAGE_DEVICE] = util.clamp(ui.selection[PAGE_DEVICE] + encoder_delta(d), 1, 2)
         elseif ui.page == PAGE_TARGETS then
-            ui.selection[PAGE_TARGETS] = util.clamp(ui.selection[PAGE_TARGETS] + encoder_delta(d), 1, #TARGET_IDS)
+            ui.selection[PAGE_TARGETS] = util.clamp(ui.selection[PAGE_TARGETS] + encoder_delta(d), 1, TARGETS_VISIBLE)
         end
         mark_dirty()
         return
@@ -1029,7 +1029,11 @@ function key(n, z)
         ui.page = PAGE_MONITOR
         show_message("monitor")
     elseif n == 3 then
-        ui.page = PAGE_TARGETS
+        if ui.page == PAGE_TARGETS then
+            cycle_target_page()
+        else
+            ui.page = PAGE_TARGETS
+        end
         show_message("targets")
     end
 end
