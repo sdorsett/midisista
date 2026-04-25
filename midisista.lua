@@ -961,7 +961,6 @@ function init()
                     ui.selection[PAGE_TARGETS] = target_index
                     -- Navigate to the page containing this target on TARGETS display (4 per page)
                     ui.targets_display_page = math.floor((target_index - 1) / TARGETS_VISIBLE) + 1
-                    show_message(string.format("sel t%d", target_index))
                     mark_dirty()
                 end
                 return
