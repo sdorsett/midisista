@@ -362,23 +362,12 @@ local function on_midi_event(device_id, midi_msg)
     end
     local event = MIDI_EVENT_CODES[event_code]
 
-    local pattern = get_pattern(device_id, channel, event_id)
-    if pattern == nil then
-        pattern = create_pattern(device_id, channel, event_id)
-    end
-
-    if event == "note_on" then
-        if normalize_rec_state(pattern.loop.rec) == 1 then
-            stop_pattern_recording(pattern)
-        else
-            start_pattern_recording(pattern)
+    if event == "cc" then
+        local pattern = get_pattern(device_id, channel, event_id)
+        if pattern == nil then
+            pattern = create_pattern(device_id, channel, event_id)
         end
-        notify_midi_info(device_id, channel, event_id, get_device_rec_state(device_id), value, event)
-        emit_pattern_state(pattern, value, event)
-    elseif pattern ~= nil and event == "note_off" then
-        notify_midi_info(device_id, channel, event_id, get_device_rec_state(device_id), value, event)
-        emit_pattern_state(pattern, value, event)
-    elseif pattern ~= nil and event == "cc" then
+
         local tolerance_distance = math.abs(pattern.last_value - value) > TOLERANCE_DISTANCE
         if pattern.loop.rec == 0 and tolerance_distance and pattern.tolerance_time_passed then
             stop_pattern_playback(pattern, false)
@@ -405,7 +394,6 @@ local function on_midi_event(device_id, midi_msg)
         emit_pattern_state(pattern, value, event)
     else
         notify_midi_info(device_id, channel, event_id, get_device_rec_state(device_id), value, event or string.format("0x%X", event_code))
-        emit_pattern_state(pattern, value, event or string.format("0x%X", event_code))
     end
 
     norns_midi_event(device_id, midi_msg)
